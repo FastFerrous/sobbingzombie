@@ -304,26 +304,56 @@ impl Netstat {
     }
 
     fn parse_connections(&mut self) -> Result<Vec<u8>, ShellError> {
-        // struct Connection {
-        //     protocol: u8,
-        //     local_addr: [u8; 16],
-        //     local_port: u16,
-        //     remote_addr: [u8; 16],
-        //     remote_port: u16,
-        //     state: u8,
-        //     pid: u32,
-        //     exe: String,
-        //     user: String,
-        // }
+        /*
+         * protocol         - u8
+         * local_addr len   - u8
+         * local_port       - u16
+         * remote_addr len  - u8
+         * remote_port      - u16
+         * state            - u8
+         * pid              - u32
+         * exe_len          - u8
+         * user_len         - u8
+         *
+         *
+         * variable data will be actual address lengths + executable path + username
+         */
+        const FIXED_CONNECTION_HDR_LEN: usize = 14;
 
-        // 1(proto) + 1(addrlen) + addr + 2(local port) + 1(addrlen) + addr + 2(remote port) + 1(state) + 4(pid) + 2(exe len) + exe + 2(user len) + user
-        //
-        // fixed header = proto(u8) + addrlen(u16) + ports(u32) +
-        //
+        /* length fields include both local and remote values */
+        const FIXED_IPV4_ADDRS_LEN: usize = 8;
+        const FIXED_IPV6_ADDRS_LEN: usize = 32;
 
-        let buffer: Vec<u8> = Vec::new();
+        let mut packed_buffer: Vec<u8> = Vec::new();
+        if packed_buffer.try_reserve(size_of::<u32>()).is_err() {
+            return Err(ShellError::Critical);
+        }
+
+        packed_buffer.extend_from_slice(&0u32.to_be_bytes());
+
+        for connection in &self.connections {
+            let variable_len = match connection.protocol {
+                0 | 1 => {
+                    /* TCP or UDP */
+                    connection.exe.len() + connection.user.len() + FIXED_IPV4_ADDRS_LEN
+                }
+                2 | 3 => {
+                    /* TCP6 or UDP6 */
+                    connection.exe.len() + connection.user.len() + FIXED_IPV6_ADDRS_LEN
+                }
+                _ => return Err(ShellError::Critical),
+            };
+
+            if packed_buffer
+                .try_reserve(FIXED_CONNECTION_HDR_LEN + variable_len)
+                .is_err()
+            {
+                return Err(ShellError::Critical);
+            }
+        }
+
         self.reset();
-        Ok(buffer)
+        Ok(packed_buffer)
     }
 
     fn reset(&mut self) {
@@ -332,3 +362,5 @@ impl Netstat {
         self.password_db = HashMap::new();
     }
 }
+
+// todo: make sure that exe len never exceeds from stat -- think its locked to 15 bytes
