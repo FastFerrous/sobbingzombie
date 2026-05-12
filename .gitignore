@@ -1,0 +1,5 @@
+/target
+.idea/*
+python/sozo/*
+python/venv/*
+.zed/*
