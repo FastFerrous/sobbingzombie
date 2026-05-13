@@ -1,8 +1,7 @@
-pub mod shell;
-
 pub mod bus;
 pub mod debug;
 mod quic;
+pub mod shell;
 
 use ctor::ctor;
 
