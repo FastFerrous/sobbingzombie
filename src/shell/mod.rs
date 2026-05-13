@@ -1,3 +1,4 @@
+mod ls;
 mod netstat;
 mod shell;
 mod tasklist;

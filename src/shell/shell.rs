@@ -11,10 +11,18 @@ use tokio_util::sync::CancellationToken;
 #[repr(u8)]
 #[derive(Copy, Clone, Debug)]
 pub enum ShellError {
+    /* Generic Errors */
     Success,
+    Critical,
     UnableToOpenDir,
     UnableToOpenFile,
-    Critical,
+
+    /* Directory Listing Errors */
+    PermissionDenied,
+    InvalidArguments,
+    PathNotFound,
+
+    /* Fallback */
     Unknown,
 }
 
@@ -257,3 +265,4 @@ impl Module for Shell {
 }
 
 // todo: need to check the error type and if it was critical, etc.
+// todo: currently enumerating passwd_db in each module -- reduce to a single utility
