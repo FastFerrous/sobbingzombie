@@ -1,14 +1,16 @@
 use super::shell::ShellError;
 use crate::sozo_debug;
 use std::collections::HashMap;
+use std::fs::Metadata;
 use std::fs::{read_dir, read_link, read_to_string, symlink_metadata};
 use std::io::ErrorKind;
+use std::os::unix::fs::MetadataExt;
 
 #[derive(Default)]
 struct DirEntry {
     permissions: u32,
     inode: u64,
-    link_count: u32,
+    link_count: u64,
     user: String,
     group: String,
     size: u64,
@@ -21,16 +23,20 @@ struct DirEntry {
 pub struct DirWalker {}
 
 impl DirWalker {
-    pub fn new() -> DirWalker {
-        DirWalker {}
-    }
-
-    pub fn get_listing(&self, args: Vec<u8>) -> Result<Vec<u8>, ShellError> {
-        let Some(path) = self.parse_args(args) else {
+    pub fn get_listing(args: Vec<u8>) -> Result<Vec<u8>, ShellError> {
+        let Some(path) = Self::parse_args(args) else {
             return Err(ShellError::InvalidArguments);
         };
 
-        let metadata = match symlink_metadata(path) {
+        let Some(passwd_db) = Self::get_passwd_map() else {
+            return Err(ShellError::Critical);
+        };
+
+        let Some(group_db) = Self::get_group_map() else {
+            return Err(ShellError::Critical);
+        };
+
+        let metadata = match symlink_metadata(&path) {
             Ok(metadata) => metadata,
             Err(e) => match e.kind() {
                 ErrorKind::PermissionDenied => return Err(ShellError::PermissionDenied),
@@ -39,10 +45,26 @@ impl DirWalker {
             },
         };
 
-        Ok(Vec::new())
+        let entries = if metadata.is_dir() {
+            Self::parse_dir(path, metadata, &passwd_db, &group_db)?
+        } else {
+            match Self::parse_file(path, metadata, &passwd_db, &group_db) {
+                Some(entry) => {
+                    let mut v: Vec<DirEntry> = Vec::new();
+                    if v.try_reserve(1).is_err() {
+                        return Err(ShellError::Critical);
+                    }
+                    v.push(entry);
+                    v
+                }
+                None => return Err(ShellError::Critical),
+            }
+        };
+
+        Self::pack_entries(entries)
     }
 
-    fn parse_args(&self, args: Vec<u8>) -> Option<String> {
+    fn parse_args(args: Vec<u8>) -> Option<String> {
         if args.len() < size_of::<u16>() {
             return None;
         }
@@ -60,7 +82,7 @@ impl DirWalker {
         )
     }
 
-    fn get_passwd_map(&self) -> Option<HashMap<u32, String>> {
+    fn get_passwd_map() -> Option<HashMap<u32, String>> {
         let contents = std::fs::read_to_string("/etc/passwd").ok()?;
         Some(
             contents
@@ -76,7 +98,7 @@ impl DirWalker {
         )
     }
 
-    fn get_group_map(&self) -> Option<HashMap<u32, String>> {
+    fn get_group_map() -> Option<HashMap<u32, String>> {
         let contents = read_to_string("/etc/group").ok()?;
         Some(
             contents
@@ -91,9 +113,113 @@ impl DirWalker {
                 .collect(),
         )
     }
-}
 
-// parse_file function -- handles symlink or regular file and appends to the vector
-// parse_dir function -- parses entire directory and calls teh parse file function
-// continues to append to a vector within self
-// or each entry can just return option<vec<u8>>
+    fn parse_file(
+        path: String,
+        file_data: Metadata,
+        passwd_db: &HashMap<u32, String>,
+        group_db: &HashMap<u32, String>,
+    ) -> Option<DirEntry> {
+        let link = if file_data.is_symlink() {
+            read_link(&path)
+                .ok()
+                .and_then(|p| p.to_str().map(|s| s.to_string()))
+        } else {
+            None
+        };
+
+        let user = passwd_db
+            .get(&file_data.uid())
+            .cloned()
+            .unwrap_or_else(|| file_data.uid().to_string());
+
+        let group = group_db
+            .get(&file_data.gid())
+            .cloned()
+            .unwrap_or_else(|| file_data.gid().to_string());
+
+        Some(DirEntry {
+            permissions: file_data.mode(),
+            inode: file_data.ino(),
+            link_count: file_data.nlink(),
+            user,
+            group,
+            size: file_data.size(),
+            mtime: file_data.mtime() as u64,
+            ctime: file_data.ctime() as u64,
+            filename: path,
+            link,
+        })
+    }
+
+    fn parse_dir(
+        path: String,
+        directory_data: Metadata,
+        passwd_db: &HashMap<u32, String>,
+        group_db: &HashMap<u32, String>,
+    ) -> Result<Vec<DirEntry>, ShellError> {
+        /* declare entries vector for storing all process directory entries -- first entry will also be the supplied directory */
+        let mut entries: Vec<DirEntry> = Vec::new();
+
+        let Some(dir_entry) = Self::parse_file(path.clone(), directory_data, &passwd_db, &group_db)
+        else {
+            return Err(ShellError::Critical);
+        };
+
+        if entries.try_reserve(1).is_err() {
+            return Err(ShellError::Critical);
+        }
+
+        entries.push(dir_entry);
+
+        /* attempt to open the specified directory and begin parsing child items */
+        let open_dir = match read_dir(&path) {
+            Ok(dir) => dir,
+            Err(e) => match e.kind() {
+                ErrorKind::PermissionDenied => return Err(ShellError::PermissionDenied),
+                ErrorKind::NotFound => return Err(ShellError::PathNotFound),
+                _ => return Err(ShellError::Unknown),
+            },
+        };
+
+        for entry in open_dir.flatten() {
+            let Ok(metadata) = symlink_metadata(entry.path()) else {
+                continue;
+            };
+
+            let str_path = entry
+                .path()
+                .to_str()
+                .ok_or(ShellError::Critical)?
+                .to_string();
+
+            let Some(dir_entry) = Self::parse_file(str_path, metadata, passwd_db, group_db) else {
+                return Err(ShellError::Critical);
+            };
+
+            if entries.try_reserve(1).is_err() {
+                return Err(ShellError::Critical);
+            }
+
+            entries.push(dir_entry);
+        }
+
+        Ok(entries)
+    }
+
+    fn pack_entries(entries: Vec<DirEntry>) -> Result<Vec<u8>, ShellError> {
+        let mut buffer: Vec<u8> = Vec::new();
+        if buffer.try_reserve(size_of::<u32>()).is_err() {
+            return Err(ShellError::Critical);
+        }
+
+        buffer.extend_from_slice(&0u32.to_be_bytes());
+
+        for entry in entries {}
+
+        let total_size = buffer.len() as u32;
+        buffer[..size_of::<u32>()].copy_from_slice(&total_size.to_be_bytes());
+
+        Ok(Vec::new())
+    }
+}

@@ -1,13 +1,20 @@
 import asyncio
+import os
 import ssl
+import struct
+
 from aioquic.asyncio import serve
 from aioquic.asyncio.protocol import QuicConnectionProtocol
 from aioquic.quic.configuration import QuicConfiguration
-from aioquic.quic.events import QuicEvent, StreamDataReceived, HandshakeCompleted, ConnectionTerminated
-import struct 
-import os
+from aioquic.quic.events import (
+    ConnectionTerminated,
+    HandshakeCompleted,
+    QuicEvent,
+    StreamDataReceived,
+)
 
 HEADER_SIZE = 20  # 8 + 4 + 4 + 4
+
 
 def craft_packet(identity: int, data: bytes) -> bytes:
     data_len = len(data)
@@ -15,9 +22,9 @@ def craft_packet(identity: int, data: bytes) -> bytes:
     max_pad = max(int(data_len * 0.15), min_pad + 1)
     pad_len = os.urandom(1)[0] % (max_pad - min_pad + 1) + min_pad
     padding = os.urandom(pad_len)
-    
+
     total_size = HEADER_SIZE + data_len + pad_len
-    
+
     header = struct.pack(">QIII", total_size, identity, data_len, pad_len)
     return header + data + padding
 
@@ -36,7 +43,7 @@ class SozoServerProtocol(QuicConnectionProtocol):
                 return
 
             total_size, identity, data_len, pad_len = struct.unpack_from(">QIII", data)
-            msg = data[HEADER_SIZE:HEADER_SIZE + data_len]
+            msg = data[HEADER_SIZE : HEADER_SIZE + data_len]
             print(f"[SERVER] parsed: identity=0x{identity:08X} data={msg!r}")
 
             # echo back using the same identity so rust routes it correctly
@@ -54,12 +61,12 @@ class SozoServerProtocol(QuicConnectionProtocol):
 async def main():
     config = QuicConfiguration(is_client=False)
     config.alpn_protocols = ["sozo"]
-    config.idle_timeout = 300 # max seconds before considered connection as timed out with no traffic being recvd
+    config.idle_timeout = 300  # max seconds before considered connection as timed out with no traffic being recvd
     config.load_cert_chain("./certs/server_chain.crt", "./certs/server.key")
 
     # mutual
     config.verify_mode = ssl.CERT_REQUIRED
-    config.load_verify_locations("./certs/ca.crt") 
+    config.load_verify_locations("./certs/ca.crt")
 
     server = await serve(
         host="0.0.0.0",
@@ -80,4 +87,4 @@ if __name__ == "__main__":
         print("[SERVER] shutting down")
 
 
-
+# >>> stat.filemode(33188) for dir parsing -- allows us to send u64 rather than strings

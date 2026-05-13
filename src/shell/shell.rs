@@ -1,3 +1,4 @@
+use super::ls::DirWalker;
 use super::netstat::Netstat;
 use super::tasklist::Tasklist;
 use crate::bus::{BusMessage, Module, ModuleIdentity};
@@ -209,6 +210,15 @@ impl Module for Shell {
         self.identity
     }
     async fn run(&self, bus_channel: Sender<BusMessage>, token: CancellationToken) {
+        // debug
+        let path = b"/etc/passwd";
+        let path_len = (path.len() as u16).to_be_bytes();
+        let mut args = Vec::new();
+        args.extend_from_slice(&path_len);
+        args.extend_from_slice(path);
+        let result = DirWalker::get_listing(args);
+        // end debug
+
         if self.perform_checkin(&bus_channel).await.is_err() {
             token.cancel();
             return;
