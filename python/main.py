@@ -37,7 +37,7 @@ class SozoServerProtocol(QuicConnectionProtocol):
 
         elif isinstance(event, StreamDataReceived):
             data = event.data
-            print(f"[SERVER] recv stream={event.stream_id}: {data.hex()}")
+            print(f"[SERVER] recv stream={event.stream_id}")
 
             if len(data) < HEADER_SIZE:
                 return

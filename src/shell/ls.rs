@@ -208,6 +208,20 @@ impl DirWalker {
     }
 
     fn pack_entries(entries: Vec<DirEntry>) -> Result<Vec<u8>, ShellError> {
+        /*
+         * permissions  : u32
+         * inode        : u64
+         * link_count   : u64
+         * user_len     : u8
+         * group_len    : u8
+         * size         : u64
+         * mtime        : u64
+         * ctime        : u64
+         * fn_len       : u16
+         * link_len     : u16
+         */
+        const FIXED_DIRENTRY_HDR_LEN: usize = 50;
+
         let mut buffer: Vec<u8> = Vec::new();
         if buffer.try_reserve(size_of::<u32>()).is_err() {
             return Err(ShellError::Critical);
@@ -215,11 +229,43 @@ impl DirWalker {
 
         buffer.extend_from_slice(&0u32.to_be_bytes());
 
-        for entry in entries {}
+        for entry in entries {
+            let link_len = entry.link.as_ref().map(|s| s.len()).unwrap_or(0);
+            let variable_len =
+                entry.filename.len() + entry.group.len() + entry.user.len() + link_len;
+
+            if buffer
+                .try_reserve(FIXED_DIRENTRY_HDR_LEN + variable_len)
+                .is_err()
+            {
+                return Err(ShellError::Critical);
+            }
+
+            /* header data */
+            buffer.extend_from_slice(&entry.permissions.to_be_bytes());
+            buffer.extend_from_slice(&entry.inode.to_be_bytes());
+            buffer.extend_from_slice(&entry.link_count.to_be_bytes());
+            buffer.extend_from_slice(&(entry.user.len() as u8).to_be_bytes());
+            buffer.extend_from_slice(&(entry.group.len() as u8).to_be_bytes());
+            buffer.extend_from_slice(&entry.size.to_be_bytes());
+            buffer.extend_from_slice(&entry.mtime.to_be_bytes());
+            buffer.extend_from_slice(&entry.ctime.to_be_bytes());
+            buffer.extend_from_slice(&(entry.filename.len() as u16).to_be_bytes());
+            buffer.extend_from_slice(&(link_len as u16).to_be_bytes());
+
+            /* variable data */
+            buffer.extend_from_slice(entry.user.as_bytes());
+            buffer.extend_from_slice(entry.group.as_bytes());
+            buffer.extend_from_slice(entry.filename.as_bytes());
+
+            if let Some(link) = entry.link {
+                buffer.extend_from_slice(link.as_bytes());
+            }
+        }
 
         let total_size = buffer.len() as u32;
         buffer[..size_of::<u32>()].copy_from_slice(&total_size.to_be_bytes());
 
-        Ok(Vec::new())
+        Ok(buffer)
     }
 }
