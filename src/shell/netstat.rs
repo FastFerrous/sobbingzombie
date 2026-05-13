@@ -130,21 +130,6 @@ impl Netstat {
             return Err(ShellError::Critical);
         }
 
-        for connection in &connections {
-            println!(
-                "{} {:?}:{} -- {:?}:{} {} {} {} {}",
-                connection.protocol,
-                connection.local_addr,
-                connection.local_port,
-                connection.remote_addr,
-                connection.remote_port,
-                connection.state,
-                connection.pid,
-                connection.exe,
-                connection.user
-            )
-        }
-
         self.connections.extend(connections);
         Ok(())
     }
@@ -332,14 +317,20 @@ impl Netstat {
         packed_buffer.extend_from_slice(&0u32.to_be_bytes());
 
         for connection in &self.connections {
-            let variable_len = match connection.protocol {
+            let (variable_len, addr_len) = match connection.protocol {
                 0 | 1 => {
                     /* TCP or UDP */
-                    connection.exe.len() + connection.user.len() + FIXED_IPV4_ADDRS_LEN
+                    (
+                        connection.exe.len() + connection.user.len() + FIXED_IPV4_ADDRS_LEN,
+                        FIXED_IPV4_ADDRS_LEN / size_of::<u16>(),
+                    )
                 }
                 2 | 3 => {
                     /* TCP6 or UDP6 */
-                    connection.exe.len() + connection.user.len() + FIXED_IPV6_ADDRS_LEN
+                    (
+                        connection.exe.len() + connection.user.len() + FIXED_IPV6_ADDRS_LEN,
+                        FIXED_IPV6_ADDRS_LEN / size_of::<u16>(),
+                    )
                 }
                 _ => return Err(ShellError::Critical),
             };
@@ -350,7 +341,24 @@ impl Netstat {
             {
                 return Err(ShellError::Critical);
             }
+
+            packed_buffer.extend_from_slice(&connection.protocol.to_be_bytes());
+            packed_buffer.extend_from_slice(&(addr_len as u8).to_be_bytes());
+            packed_buffer.extend_from_slice(&connection.local_port.to_be_bytes());
+            packed_buffer.extend_from_slice(&(addr_len as u8).to_be_bytes());
+            packed_buffer.extend_from_slice(&connection.remote_port.to_be_bytes());
+            packed_buffer.extend_from_slice(&connection.state.to_be_bytes());
+            packed_buffer.extend_from_slice(&connection.pid.to_be_bytes());
+            packed_buffer.extend_from_slice(&(connection.exe.len() as u8).to_be_bytes());
+            packed_buffer.extend_from_slice(&(connection.user.len() as u8).to_be_bytes());
+            packed_buffer.extend_from_slice(&connection.local_addr[..addr_len]);
+            packed_buffer.extend_from_slice(&connection.remote_addr[..addr_len]);
+            packed_buffer.extend_from_slice(connection.exe.as_bytes());
+            packed_buffer.extend_from_slice(connection.user.as_bytes());
         }
+
+        let total_size = packed_buffer.len() as u32;
+        packed_buffer[..size_of::<u32>()].copy_from_slice(&total_size.to_be_bytes());
 
         self.reset();
         Ok(packed_buffer)
@@ -362,5 +370,3 @@ impl Netstat {
         self.password_db = HashMap::new();
     }
 }
-
-// todo: make sure that exe len never exceeds from stat -- think its locked to 15 bytes

