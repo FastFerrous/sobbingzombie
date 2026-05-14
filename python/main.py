@@ -46,14 +46,6 @@ class SozoServerProtocol(QuicConnectionProtocol):
             msg = data[HEADER_SIZE : HEADER_SIZE + data_len]
             print(f"[SERVER] parsed: identity=0x{identity:08X} data={msg!r}")
 
-            # echo back using the same identity so rust routes it correctly
-            response = craft_packet(identity, msg)
-            # self._quic.send_stream_data(
-            #     stream_id=event.stream_id,
-            #     data=response,
-            # )
-            # self.transmit()
-
         elif isinstance(event, ConnectionTerminated):
             print(f"[SERVER] client disconnected: {event.reason_phrase}")
 
