@@ -1,5 +1,6 @@
 pub mod bus;
 pub mod debug;
+pub mod loader;
 mod quic;
 pub mod shell;
 

@@ -273,6 +273,6 @@ impl Module for Shell {
     }
 }
 
-// todo: need to check the error type and if it was critical, etc.
+// todo: need to check the error type and if it was critical, etc -- this needs to occur prior to send so we can bail if required.
 // todo: currently enumerating passwd_db in each module -- reduce to a single utility
 // todo: add all sozo debug statements to modules
