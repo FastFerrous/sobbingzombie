@@ -159,8 +159,8 @@ impl Netstat {
         let laddr = self.parse_net_addr(laddr)?;
         let raddr = self.parse_net_addr(raddr)?;
 
-        let lport = u16::from_str_radix(lport, 16).ok()?.to_be();
-        let rport = u16::from_str_radix(rport, 16).ok()?.to_be();
+        let lport = u16::from_str_radix(lport, 16).ok()?;
+        let rport = u16::from_str_radix(rport, 16).ok()?;
 
         /* extract uid to search through passwd db */
         let uid = fields

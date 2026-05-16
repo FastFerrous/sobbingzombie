@@ -3,3 +3,5 @@
 python/sozo/*
 python/venv/*
 .zed/*
+python/notes.txt
+python/__pycache__/*
