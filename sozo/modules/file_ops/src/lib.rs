@@ -47,6 +47,9 @@ pub unsafe extern "C" fn module_entry() -> *const ModuleVTable {
     &VTABLE
 }
 
+// finish up the main extern functions and then work on internals parsing of certain things. just do simple prints for now.
+// once built, just make the loader and see if we can do that
+
 /*
  * unsafe extern "C" fn run(state: *mut c_void, sender: *mut c_void, token: *mut c_void) {
      let sender = unsafe { *Box::from_raw(sender as *mut Sender<BusMessage>) };
@@ -60,6 +63,3 @@ pub unsafe extern "C" fn module_entry() -> *const ModuleVTable {
  }
  *
  */
-
-
-// currently passing mut void to all functions but most likely will have to change to just the actual instance an dmirror native modules due to moving into the bus
