@@ -4,12 +4,12 @@ use tokio::sync::mpsc::{Sender, Receiver};
 use tokio::sync::Mutex;
 use tokio_util::sync::CancellationToken;
 
-struct FileOperations {
+struct Template {
     rx: Mutex<Receiver<BusMessage>>,
     tx: Sender<BusMessage>,
 }
 
-impl FileOperations {
+impl Template {
     fn new() -> Self {
         const MAX_MSG_BUFFER: usize = 1024;
 
@@ -22,11 +22,11 @@ impl FileOperations {
 }
 
 unsafe extern "C" fn plugin_init() -> *mut c_void {
-    Box::into_raw(Box::new(FileOperations::new())) as *mut c_void
+    Box::into_raw(Box::new(Template::new())) as *mut c_void
 }
 
 unsafe extern "C" fn plugin_destroy(instance: *mut c_void) {
-    drop(unsafe { Box::from_raw(instance as *mut FileOperations) });
+    drop(unsafe { Box::from_raw(instance as *mut Template) });
 }
 
 unsafe extern "C" fn plugin_run(instance: *mut c_void, channel: *mut c_void, token: *mut c_void) {}
@@ -60,6 +60,3 @@ pub unsafe extern "C" fn module_entry() -> *const ModuleVTable {
  }
  *
  */
-
-
-// currently passing mut void to all functions but most likely will have to change to just the actual instance an dmirror native modules due to moving into the bus
