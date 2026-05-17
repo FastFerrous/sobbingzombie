@@ -104,4 +104,4 @@ impl Drop for Bus {
 /* TODO: Enforce msg lengths across the module bus -- ie network traffic is limited to a max size of 8192; Header + Msg + Padding should not exceed. Current implementation of the bus should ensure that messages do not exceed 4096 byte chunk lengths; currently just pulling from quic packet design */
 /* TODO: Create foreign module ABI for runtime loading */
 /* TODO: Once we start talking loader, we will need runtime control of the bus, will need extra channels or a BusCommand message type with watch */
-/* TODO: Create start module as well so once things come in dynamically */
+/* TODO: Create start module as well so once things come in dynamically -- basically copy the function currently or once we register the dynamic module, just call the run directly */

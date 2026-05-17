@@ -2,7 +2,6 @@ use tokio::sync::mpsc::{Receiver, Sender};
 use tokio_util::sync::CancellationToken;
 use sozo_api::{Module, ModuleIdentity, BusMessage, sozo_debug};
 
-
 pub struct LibraryLoader {
     identity: ModuleIdentity,
     tx: Sender<BusMessage>,
@@ -40,3 +39,4 @@ impl Module for LibraryLoader {
 // standard module that is registered as part of core ( ie core is shell, quic, loader and all of them register to the module bus )
 // performs runtime loading and registration of modules -- ie sends control messages to perform registration with the module bus and during registration the module is executed
 // structure that is loaded is part of the foreign module layout -- this will contain the file descriptor of the module to avoid dropping and vtable
+// takes in loaded modules and wraps them so they can impl the Module trait as required since the ABI fulfills it but doesnt actually know its impl -- so need a foreign module as well as loader

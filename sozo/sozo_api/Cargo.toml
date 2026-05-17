@@ -11,3 +11,4 @@ rand = "0.10.1"
 async-trait = "0.1.89"
 tokio = { version = "1.52.3", features = ["rt", "rt-multi-thread", "macros"] }
 tokio-util = { version = "0.7.18", features = ["rt"] }
+libc = "0.2.186"

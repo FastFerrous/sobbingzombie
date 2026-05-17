@@ -8,3 +8,5 @@ crate-type = ["cdylib"]
 
 [dependencies]
 sozo_api = { workspace = true }
+tokio = { version = "1.52.3", features = ["rt", "rt-multi-thread", "macros"] }
+tokio-util = { version = "0.7.18", features = ["rt"] }
