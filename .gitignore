@@ -1,7 +1,5 @@
-/target
-.idea/*
-python/sozo/*
-python/venv/*
+sozo_c2/notes.txt
+sozo_c2/__pycache__/*
+sozo/target/*
 .zed/*
-python/notes.txt
-python/__pycache__/*
+.idea/*
