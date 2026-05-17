@@ -1,0 +1,17 @@
+[workspace]
+resolver = "2"
+members = [
+    "sozo_api",
+    "sozo_core",
+    "modules/*",
+]
+
+[workspace.dependencies]
+sozo_api = { path = "sozo_api" }
+
+[profile.release]
+opt-level = "z"
+lto = true
+codegen-units = 1
+strip = true
+panic = "abort"

@@ -1,0 +1,10 @@
+[env]
+
+# bind + callback specifiers
+SOZO_HOST = "localhost"
+SOZO_PORT = "4443"
+
+# tls certificates
+SOZO_CLIENT_CRT = "../../../../sozo_c2/certs/client.crt.der"
+SOZO_CLIENT_KEY = "../../../../sozo_c2/certs/client.key.der"
+SOZO_SERVER_CRT = "../../../../sozo_c2/certs/server.crt.der"

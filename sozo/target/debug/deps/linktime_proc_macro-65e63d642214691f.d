@@ -1,0 +1,10 @@
+/opt/sobbingzombie/sozo/target/debug/deps/linktime_proc_macro-65e63d642214691f.d: /home/user/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/linktime-proc-macro-0.1.0/src/lib.rs /home/user/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/linktime-proc-macro-0.1.0/src/generate.rs /home/user/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/linktime-proc-macro-0.1.0/src/hash/mod.rs /home/user/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/linktime-proc-macro-0.1.0/src/hash/xx3.rs /home/user/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/linktime-proc-macro-0.1.0/src/tokens.rs /home/user/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/linktime-proc-macro-0.1.0/src/../README.md
+
+/opt/sobbingzombie/sozo/target/debug/deps/liblinktime_proc_macro-65e63d642214691f.so: /home/user/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/linktime-proc-macro-0.1.0/src/lib.rs /home/user/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/linktime-proc-macro-0.1.0/src/generate.rs /home/user/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/linktime-proc-macro-0.1.0/src/hash/mod.rs /home/user/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/linktime-proc-macro-0.1.0/src/hash/xx3.rs /home/user/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/linktime-proc-macro-0.1.0/src/tokens.rs /home/user/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/linktime-proc-macro-0.1.0/src/../README.md
+
+/home/user/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/linktime-proc-macro-0.1.0/src/lib.rs:
+/home/user/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/linktime-proc-macro-0.1.0/src/generate.rs:
+/home/user/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/linktime-proc-macro-0.1.0/src/hash/mod.rs:
+/home/user/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/linktime-proc-macro-0.1.0/src/hash/xx3.rs:
+/home/user/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/linktime-proc-macro-0.1.0/src/tokens.rs:
+/home/user/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/linktime-proc-macro-0.1.0/src/../README.md:
