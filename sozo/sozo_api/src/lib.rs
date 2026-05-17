@@ -105,3 +105,27 @@ struct ThreadSafeVTable(*const ModuleVTable);
 
 unsafe impl Send for ThreadSafeCVoid {}
 unsafe impl Send for ThreadSafeVTable {}
+
+// consider a host side vtable that is supplied into the plugin run function rather than the token and sender.
+// callback functions can be used that get performed over here where the runtime exists and just primitive errors returned to plugin
+// removes tokio dependency
+
+// so essentially we createa host side vtable that performs the actual actions, so we pass in three things
+/*
+ * {
+ * opaque structure containing the sender, token and identity?
+ * then a vtable containing that structure plus two function addresses which is host send a mesage to the bus and host is cancelled
+ * }
+ *
+ * we would need those functions now here as extern c functions that are called -- ctx is used to determine who cals who, etc.
+ *
+ *
+ *
+ * Add HostVTable, HostCtx, host_send_message, host_is_cancelled to sozo_api.
+ Change ModuleVTable::run to take *const HostVTable instead of two c_void pointers.
+ Update PluginModule::run to construct the host vtable and pass it through.
+ Rewrite FileOperations::plugin_run as a sync polling loop using the host vtable.
+ Drop Tokio from the plugin's Cargo.toml. Replace tokio::sync::Mutex with std::sync::Mutex, the channel with a VecDeque.
+ Test with the harness. Verify the plugin size dropped significantly. Verify cancellation and message flow work.
+ *
+ */

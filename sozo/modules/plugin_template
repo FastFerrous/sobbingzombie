@@ -5,16 +5,17 @@ use tokio::sync::Mutex;
 use tokio_util::sync::CancellationToken;
 
 struct Template {
-    rx: Mutex<Receiver<BusMessage>>,
-    tx: Sender<BusMessage>,
+    rx: Mutex<Receiver<Vec<u8>>>,
+    tx: Sender<Vec<u8>>,
 }
 
 impl Template {
-    fn new() -> Self {
+    fn new() -> Template {
         const MAX_MSG_BUFFER: usize = 1024;
 
         let (tx, rx) = tokio::sync::mpsc::channel(MAX_MSG_BUFFER);
-        Self {
+
+        Template {
             rx: Mutex::new(rx),
             tx,
         }
@@ -29,10 +30,70 @@ unsafe extern "C" fn plugin_destroy(instance: *mut c_void) {
     drop(unsafe { Box::from_raw(instance as *mut Template) });
 }
 
-unsafe extern "C" fn plugin_run(instance: *mut c_void, channel: *mut c_void, token: *mut c_void) {}
+unsafe extern "C" fn plugin_run(instance: *mut c_void, channel: *mut c_void, token: *mut c_void) {
+    if instance.is_null() || channel.is_null() || token.is_null() {
+        return;
+    }
+
+    let bus_channel = unsafe { *Box::from_raw(channel as *mut Sender<BusMessage>) };
+    let token = unsafe{ *Box::from_raw(token as *mut CancellationToken) };
+    let instance = instance as * const Template;
+
+    let rt_handle = match tokio::runtime::Handle::try_current() {
+        Ok(handle) => handle,
+        Err(_) => {
+            sozo_debug!("Template::plugin_run", "unable to grab handle to current runtime");
+            token.cancel();
+            return;
+        }
+    };
+
+    sozo_debug!("Template::plugin_run", "handle obtained within current runtime");
+    let mut rx =  unsafe {
+        match (&*(instance)).rx.try_lock() {
+            Ok(rx) => rx,
+            Err(_) => {
+                token.cancel();
+                return;
+            }
+        }
+    };
+
+    rt_handle.block_on(async move {
+        let mut rx = unsafe { (&*(instance)).rx.lock().await };
+        loop {
+            tokio::select! {
+                _ = token.cancelled() => break,
+                msg = rx.recv() => {
+                    if let Some(_msg) = msg {
+                        sozo_debug!("Template::plugin_run", "recvd message");
+                    } else {
+                        break;
+                    }
+                }
+            }
+        }
+        token.cancel();
+    });
+}
 
 unsafe extern "C" fn plugin_enqueue(instance: *mut c_void, msg: *const u8, len: usize) -> u8 {
-    0u8
+    if instance.is_null() || msg.is_null() {
+        return false as u8;
+    }
+
+    let slice_msg = unsafe { std::slice::from_raw_parts(msg, len)};
+
+    let mut msg : Vec<u8> = Vec::new();
+    if msg.try_reserve(slice_msg.len()).is_err(){
+        return false as u8;
+    }
+
+    msg.extend_from_slice(slice_msg);
+
+    unsafe {
+        (&*(instance as *const Template)).tx.try_send(msg).is_ok() as u8
+    }
 }
 
 static VTABLE: ModuleVTable = ModuleVTable {
@@ -46,17 +107,3 @@ static VTABLE: ModuleVTable = ModuleVTable {
 pub unsafe extern "C" fn module_entry() -> *const ModuleVTable {
     &VTABLE
 }
-
-/*
- * unsafe extern "C" fn run(state: *mut c_void, sender: *mut c_void, token: *mut c_void) {
-     let sender = unsafe { *Box::from_raw(sender as *mut Sender<BusMessage>) };
-     let token = unsafe { *Box::from_raw(token as *mut CancellationToken) };
-     let me = unsafe { &*(state as *const MyPluginState) };
-
-     let handle = tokio::runtime::Handle::current();
-     handle.block_on(async move {
-         me.run_impl(sender, token).await;
-     });
- }
- *
- */

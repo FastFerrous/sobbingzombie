@@ -15,3 +15,5 @@ lto = true
 codegen-units = 1
 strip = true
 panic = "abort"
+
+# add the workspace dependencies for common libs

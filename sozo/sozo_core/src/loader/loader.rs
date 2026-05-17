@@ -1,6 +1,6 @@
 use tokio::sync::mpsc::{Receiver, Sender};
 use tokio_util::sync::CancellationToken;
-use sozo_api::{Module, ModuleIdentity, BusMessage, sozo_debug};
+use sozo_api::{Module, ModuleIdentity, BusMessage, sozo_debug, PluginModule};
 
 pub struct LibraryLoader {
     identity: ModuleIdentity,
@@ -28,6 +28,7 @@ impl Module for LibraryLoader {
     }
 
     async fn run(&self, bus_channel: Sender<BusMessage>, token: CancellationToken) {
+        // todo
         println!("Inside run");
     }
 
