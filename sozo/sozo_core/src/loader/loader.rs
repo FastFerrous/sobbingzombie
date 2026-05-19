@@ -1,6 +1,7 @@
 use tokio::sync::mpsc::{Receiver, Sender};
 use tokio_util::sync::CancellationToken;
-use sozo_api::{Module, ModuleIdentity, BusMessage, sozo_debug, PluginModule};
+use sozo_api::{Module, ModuleIdentity, BusMessage, sozo_debug};
+use sozo_api::plugin::PluginModule;
 
 pub struct LibraryLoader {
     identity: ModuleIdentity,

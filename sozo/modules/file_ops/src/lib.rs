@@ -1,19 +1,18 @@
-use sozo_api::{sozo_debug, ModuleVTable, BusMessage};
+use sozo_api::{sozo_debug, BusMessage};
+use sozo_api::plugin::{ModuleVTable, HostVTable};
 use std::ffi::c_void;
-use tokio::sync::mpsc::{Sender, Receiver};
-use tokio::sync::Mutex;
-use tokio_util::sync::CancellationToken;
+use std::sync::mpsc::{Receiver, SyncSender, sync_channel};
+use std::sync::Mutex;
 
 struct FileOperations {
     rx: Mutex<Receiver<Vec<u8>>>,
-    tx: Sender<Vec<u8>>,
+    tx: SyncSender<Vec<u8>>,
 }
 
 impl FileOperations {
     fn new() -> FileOperations {
-        const MAX_MSG_BUFFER: usize = 1024;
-
-        let (tx, rx) = tokio::sync::mpsc::channel(MAX_MSG_BUFFER);
+        const MAX_MSG_BUFFER : usize = 1024;
+        let (tx, rx) = sync_channel::<Vec<u8>>(MAX_MSG_BUFFER);
 
         FileOperations {
             rx: Mutex::new(rx),
@@ -30,52 +29,29 @@ unsafe extern "C" fn plugin_destroy(instance: *mut c_void) {
     drop(unsafe { Box::from_raw(instance as *mut FileOperations) });
 }
 
-unsafe extern "C" fn plugin_run(instance: *mut c_void, channel: *mut c_void, token: *mut c_void) {
-    if instance.is_null() || channel.is_null() || token.is_null() {
+unsafe extern "C" fn plugin_run(instance: *mut c_void, host_vtable: *const HostVTable) {
+    if instance.is_null() || host_vtable.is_null() {
         return;
     }
 
-    let bus_channel = unsafe { *Box::from_raw(channel as *mut Sender<BusMessage>) };
-    let token = unsafe{ *Box::from_raw(token as *mut CancellationToken) };
-    let instance = instance as * const FileOperations;
+    let instance = unsafe { &*(instance as * const FileOperations) };
+    let host_vtable = unsafe { &*host_vtable };
 
-    let rt_handle = match tokio::runtime::Handle::try_current() {
-        Ok(handle) => handle,
-        Err(_) => {
-            sozo_debug!("FileOperations::plugin_run", "unable to grab handle to current runtime");
-            token.cancel();
-            return;
-        }
+    let rx = match instance.rx.try_lock() {
+        Ok(guard) => guard,
+        Err(_) => return,
     };
 
-    sozo_debug!("FileOperations::plugin_run", "handle obtained within current runtime");
+    sozo_debug!("FileOperations::plugin_run", "currently sitting within plugin_run");
 
-    let mut rx =  unsafe {
-        match (&*(instance)).rx.try_lock() {
-            Ok(rx) => rx,
-            Err(_) => {
-                token.cancel();
-                return;
-            }
-        }
-    };
+    loop {
+        sozo_debug!("FileOperations::plugin_run", "inside loop");
+        let result = unsafe { (host_vtable.poll_objects)(host_vtable.ctx) };
+        sozo_debug!("FileOperations::plugin_run", "result was {}", result);
+        break;
 
-    rt_handle.block_on(async move {
-        let mut rx = unsafe { (&*(instance)).rx.lock().await };
-        loop {
-            tokio::select! {
-                _ = token.cancelled() => break,
-                msg = rx.recv() => {
-                    if let Some(_msg) = msg {
-                        sozo_debug!("FileOperations::plugin_run", "recvd message");
-                    } else {
-                        break;
-                    }
-                }
-            }
-        }
-        token.cancel();
-    });
+        // if told to get the message, lets take it
+    }
 }
 
 unsafe extern "C" fn plugin_enqueue(instance: *mut c_void, msg: *const u8, len: usize) -> u8 {
@@ -108,3 +84,5 @@ static VTABLE: ModuleVTable = ModuleVTable {
 pub unsafe extern "C" fn module_entry() -> *const ModuleVTable {
     &VTABLE
 }
+
+// can i make bus messages here or is it better to just do the callback so we arent crossing boundaries?
