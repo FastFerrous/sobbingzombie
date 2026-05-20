@@ -46,11 +46,12 @@ unsafe extern "C" fn plugin_run(instance: *mut c_void, host_vtable: *const HostV
 
     loop {
         sozo_debug!("FileOperations::plugin_run", "inside loop");
-        let result = unsafe { (host_vtable.poll_objects)(host_vtable.ctx) };
+        let result = unsafe { (host_vtable.poll_objects)(host_vtable.context) };
         sozo_debug!("FileOperations::plugin_run", "result was {}", result);
-        break;
-
-        // if told to get the message, lets take it
+        if result == 0 {
+            sozo_debug!("FileOperations::plugin_run", "token was cancelled");
+            break;
+        }
     }
 }
 
@@ -84,5 +85,3 @@ static VTABLE: ModuleVTable = ModuleVTable {
 pub unsafe extern "C" fn module_entry() -> *const ModuleVTable {
     &VTABLE
 }
-
-// can i make bus messages here or is it better to just do the callback so we arent crossing boundaries?

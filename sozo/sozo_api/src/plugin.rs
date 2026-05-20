@@ -105,34 +105,34 @@ impl Module for PluginModule{
          * plugin context
          * stores all required fields that are used during callback operations to signal messages back to plugin during runtime
         */
-        let cxt_ptr: *mut PluginContext = Box::into_raw(Box::new(PluginContext {
+        let cxt = ThreadSafeCVoid(Box::into_raw(Box::new(PluginContext {
             tx: bus_channel,
             token,
             notify: self.notify.clone(),
-        }));
+        })) as *mut c_void);
 
         /* assign callback functions and store plugin context */
-        let vtable_ptr = Box::into_raw(Box::new(HostVTable {
-            context : cxt_ptr as *mut c_void,
+        let host_vtable = ThreadSafeHostVTable(Box::into_raw(Box::new(HostVTable {
+            context: cxt.0,
             send_bus_message: send_message,
-            poll_objects
-        })) as *const HostVTable;
+            poll_objects,
+        })) as *const HostVTable);
 
         let state = ThreadSafeCVoid(self.handle.state);
-        let vtable = ThreadSafeVTable(self.handle.vtable);
-        let host_vtable = ThreadSafeHostVTable(vtable_ptr);
+        let module_vtable = ThreadSafeVTable(self.handle.vtable);
 
         let _ = spawn_blocking(move || {
-            let vtable = &vtable;
+            let module_vtable = &module_vtable;
             let state = &state;
             let host_vtable = &host_vtable;
-            unsafe { ((*vtable.0).run)(state.0, host_vtable.0) }
-        }).await;
+            let context = &cxt;
+            unsafe { ((*module_vtable.0).run)(state.0, host_vtable.0) }
 
-        unsafe {
-            drop(Box::from_raw(vtable_ptr as *mut HostVTable));
-            drop(Box::from_raw(cxt_ptr));
-        }
+            unsafe {
+                drop(Box::from_raw(host_vtable.0 as *mut HostVTable));
+                drop(Box::from_raw(context.0 as *mut PluginContext));
+            }
+        }).await;
     }
 
     fn enqueue(&self, msg: BusMessage) -> bool {
