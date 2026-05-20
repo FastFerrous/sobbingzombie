@@ -1,4 +1,4 @@
-use sozo_api::{sozo_debug, BusMessage};
+use sozo_api::{sozo_debug};
 use sozo_api::plugin::{ModuleVTable, HostVTable};
 use std::ffi::c_void;
 use std::sync::mpsc::{Receiver, SyncSender, sync_channel};
