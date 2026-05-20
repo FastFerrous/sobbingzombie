@@ -1,8 +1,41 @@
+use std::ffi::{CString, c_void};
+use libc::dlopen;
 use tokio::sync::mpsc::{Receiver, Sender};
 use tokio_util::sync::CancellationToken;
 use sozo_api::{Module, ModuleIdentity, BusMessage, sozo_debug};
 use sozo_api::plugin::PluginModule;
 use tokio::sync::Mutex;
+
+struct FileDescriptor {
+    fd : i32
+}
+
+impl FileDescriptor {
+    pub fn as_raw(&self) -> i32 {
+        self.fd
+    }
+}
+
+impl TryFrom<i32> for FileDescriptor {
+    type Error = ();
+    fn try_from(fd: i32) -> Result<Self, Self::Error> {
+        if fd < 0 {
+            return Err(())
+        } else {
+            Ok(FileDescriptor{fd})
+        }
+    }
+}
+
+impl Drop for FileDescriptor {
+    fn drop(&mut self) {
+        if self.fd >= 0 {
+            unsafe {
+                libc::close(self.fd);
+            }
+        }
+    }
+}
 
 #[derive(Debug)]
 enum LoadError {
@@ -86,6 +119,47 @@ impl LibraryLoader {
             }
         }
     }
+
+    fn load_shared_object(&self, lib_so: &[u8]) -> Result<(), ()> {
+
+        let fd = unsafe {
+            libc::memfd_create(c"plugin".as_ptr(), libc::MFD_CLOEXEC)
+        };
+
+        if fd < 0 {
+            return Err(());
+        }
+
+        let Ok(fd) = FileDescriptor::try_from(fd) else {
+            return Err(())
+        };
+
+        let result = unsafe {
+            libc::write(fd.as_raw(), lib_so.as_ptr() as *const c_void, lib_so.len())
+        };
+
+        if -1 == result || lib_so.len() as isize != result {
+            return Err(());
+        }
+
+        let file_path = match CString::new(format!("/proc/self/fd/{}", fd.as_raw())) {
+            Ok(path) => path,
+            Err(_) => {
+                return Err(());
+            }
+        };
+
+        let address = unsafe {
+            dlopen(file_path.as_ptr(), libc::RTLD_NOW | libc::RTLD_LOCAL)
+        };
+
+        if address.is_null() {
+            return Err(());
+        }
+
+        Ok(())
+    }
+
 }
 
 #[async_trait::async_trait]
@@ -109,16 +183,25 @@ impl Module for LibraryLoader {
                 msg = rx.recv() => {
                     if let Some(msg) = msg {
                         if msg.msg.is_empty() {
+                            sozo_debug!("LibraryLoader::run", "msg is empty");
                             break;
                         }
 
-                        let _ = match self.handle_inbound_msg(&mut state, &msg.msg) {
-                            LoadStatus::Waiting => println!("okay, waiting"),
-                            _ => println!("other")
+                        let lib_so = match self.handle_inbound_msg(&mut state, &msg.msg) {
+                            LoadStatus::Waiting => {
+                                sozo_debug!("LibraryLoader::run", "waiting triggered -- waiting for additional inbound packets to build shared object");
+                                continue;
+                            },
+                            LoadStatus::Error(_) => {
+                                sozo_debug!("LibraryLoader::run", "critical error or violation to network protocol");
+                                break;
+                            },
+                            LoadStatus::Complete(lib_so) => lib_so
                         };
 
-                        // perform result checks here -- perform follow on action.
-                        // go into loading
+
+
+
 
                     } else {
                         break;
@@ -134,13 +217,7 @@ impl Module for LibraryLoader {
     }
 }
 
-
     // once its loaded and we have a vtable, we can then wrap into a plugin module
-
-    // get inbound message which should be a entire module -- need to grab all the bytes at once and then perform
-    // write to mem_fd and write the bytes
-    // build out the string path and dl open
-    // close out fd since we dont need it now
     // search for module_entry
     // get vtable
     // wrap into plugin module
