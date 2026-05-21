@@ -91,6 +91,17 @@ pub struct PluginModule {
     notify : Arc<Notify>
 }
 
+impl PluginModule {
+    pub fn new(mem_addr: *mut c_void, vtable: *const ModuleVTable, instance: *mut c_void) -> PluginModule {
+        PluginModule {
+            identity: ModuleIdentity::get_custom(),
+            handle: ModuleHandle { vtable, state: instance },
+            mem_addr,
+            notify: Arc::new(Notify::new())
+        }
+    }
+}
+
 unsafe impl Send for PluginModule {}
 unsafe impl Sync for PluginModule {}
 
