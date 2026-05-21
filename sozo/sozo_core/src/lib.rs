@@ -57,14 +57,20 @@ fn sozo_init() {
             sozo_debug!("sozo_init", "unable to load shell module");
             return;
         };
+        let loader = loader::LibraryLoader::new();
 
         if !bus.register(Box::new(quic)) {
-            sozo_debug!("sozo_init", "unable to register COMMS module");
+            sozo_debug!("sozo_init", "unable to register Comms module");
             return;
         }
 
         if !bus.register(Box::new(shell)) {
-            sozo_debug!("sozo_init", "unable to register SHELL module");
+            sozo_debug!("sozo_init", "unable to register Shell module");
+            return;
+        }
+
+        if !bus.register(Box::new(loader)) {
+            sozo_debug!("sozo_init", "unable to register LibraryLoader module");
             return;
         }
 

@@ -5,18 +5,29 @@ use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 use sozo_api::{Module, ModuleIdentity, BusMessage, sozo_debug};
 
+enum BusCommand {
+    Register(Box<dyn Module>)
+}
+
+pub struct BusController {
+    tx: Sender<BusCommand>
+}
+
 pub struct Bus {
     modules: HashMap<ModuleIdentity, Arc<dyn Module>>,
     handles: Vec<JoinHandle<()>>,
     rx: Receiver<BusMessage>,
     tx: Sender<BusMessage>,
     token: CancellationToken,
+    ctrl_rx: Receiver<BusCommand>,
+    ctrl_tx: Sender<BusCommand>
 }
 
 impl Bus {
     pub fn new() -> Bus {
         const MAX_MSG_BUFFER: usize = 1024;
         let (tx, rx) = mpsc::channel::<BusMessage>(MAX_MSG_BUFFER);
+        let (ctrl_tx, ctrl_rx) = mpsc::channel::<BusCommand>(MAX_MSG_BUFFER);
 
         Bus {
             modules: HashMap::new(),
@@ -24,6 +35,8 @@ impl Bus {
             rx,
             tx,
             token: CancellationToken::new(),
+            ctrl_rx,
+            ctrl_tx
         }
     }
 
@@ -71,20 +84,51 @@ impl Bus {
     }
 
     pub async fn dispatch(&mut self) {
-        while let Some(msg) = self.rx.recv().await {
-            match self.modules.get_mut(&msg.identity) {
-                Some(module) => {
-                    module.enqueue(msg);
+        loop {
+            tokio::select! {
+                _ = self.token.cancelled() => break,
+                msg = self.rx.recv() => {
+                    let Some(msg) = msg else {
+                        break
+                    };
+
+                    match self.modules.get(&msg.identity) {
+                        Some(module) => {
+                            module.enqueue(msg);
+                        }
+                        None => {
+                            sozo_debug!(
+                                "bus_dispatch",
+                                "supplied identity is not a valid registration"
+                            );
+                            return;
+                        }
+                    }
                 }
-                None => {
-                    sozo_debug!(
-                        "bus_dispatch",
-                        "supplied identity is not a valid registration"
-                    );
-                    return;
+                ctrl_msg = self.ctrl_rx.recv() =>  {
+                    let Some(ctrl_msg) = ctrl_msg else {
+                        break
+                    };
+
+                    match ctrl_msg {
+                        BusCommand::Register(module) => {
+                            if !self.register(module) {
+                                println!("failed to register the bus, send response back to loader");
+                            }
+
+                            // start it
+                            // return result
+                        }
+                    }
                 }
             }
         }
+
+        self.token.cancel();
+    }
+
+    pub fn get_bus_controller(&self) -> BusController {
+        BusController { tx: self.ctrl_tx.clone() }
     }
 }
 
@@ -102,5 +146,5 @@ impl Drop for Bus {
 }
 
 /* TODO: Enforce msg lengths across the module bus -- ie network traffic is limited to a max size of 8192; Header + Msg + Padding should not exceed. Current implementation of the bus should ensure that messages do not exceed 4096 byte chunk lengths; currently just pulling from quic packet design */
-/* TODO: Once we start talking loader, we will need runtime control of the bus, will need extra channels or a BusCommand message type with watch */
-/* TODO: Create start module as well so once things come in dynamically -- basically copy the function currently or once we register the dynamic module, just call the run directly */
+/* TODO: Currently not checking for collisions due to sheer size as of now */
+/* TODO: Build out a response via oneshot channel or something so loader knows actual response -- pass in a bool by reference or something -- dispatch calls register and then starts, sends result, etc. */

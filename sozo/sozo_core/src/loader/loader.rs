@@ -270,4 +270,6 @@ impl Module for LibraryLoader {
     }
 }
 
+// paused until bus controller is created so that it can be passed into the loader module
 // need to craft the error response back to shell module from load and create -- currently just `continue`
+// if we reigster successfully, we need to respond back with retcode as well as the identity number os it can be registered locally on c2
