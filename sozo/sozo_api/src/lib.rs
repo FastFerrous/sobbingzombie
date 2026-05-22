@@ -6,7 +6,7 @@ use tokio::sync::mpsc::Sender;
 use tokio_util::sync::CancellationToken;
 
 pub struct BusMessage {
-    pub identity: ModuleIdentity,       /* local routing destination -- module bus utilizes this to route internal to process */
+    pub identity: ModuleIdentity, /* local routing destination -- module bus utilizes this to route internal to process */
     pub remote: Option<ModuleIdentity>, /* optional module identity to specify the remote or end `target` for the destination; Used via Comms to specify the over the wire module that should be routed this data */
     pub msg: Vec<u8>,
 }

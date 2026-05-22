@@ -1,16 +1,29 @@
+use sozo_api::{BusMessage, Module, ModuleIdentity, sozo_debug};
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::mpsc::{self, Receiver, Sender};
+use tokio::sync::oneshot;
 use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
-use sozo_api::{Module, ModuleIdentity, BusMessage, sozo_debug};
 
 enum BusCommand {
-    Register(Box<dyn Module>)
+    Register(Box<dyn Module>, oneshot::Sender<bool>),
 }
 
 pub struct BusController {
-    tx: Sender<BusCommand>
+    tx: Sender<BusCommand>,
+}
+
+impl BusController {
+    pub async fn register(&self, plugin: Box<dyn Module>) -> bool {
+        let (tx, rx) = oneshot::channel::<bool>();
+
+        if self.tx.try_send(BusCommand::Register(plugin, tx)).is_err() {
+            return false;
+        }
+
+        rx.await.unwrap_or(false)
+    }
 }
 
 pub struct Bus {
@@ -20,7 +33,7 @@ pub struct Bus {
     tx: Sender<BusMessage>,
     token: CancellationToken,
     ctrl_rx: Receiver<BusCommand>,
-    ctrl_tx: Sender<BusCommand>
+    ctrl_tx: Sender<BusCommand>,
 }
 
 impl Bus {
@@ -36,7 +49,7 @@ impl Bus {
             tx,
             token: CancellationToken::new(),
             ctrl_rx,
-            ctrl_tx
+            ctrl_tx,
         }
     }
 
@@ -101,7 +114,7 @@ impl Bus {
                                 "bus_dispatch",
                                 "supplied identity is not a valid registration"
                             );
-                            return;
+                            break;
                         }
                     }
                 }
@@ -111,24 +124,44 @@ impl Bus {
                     };
 
                     match ctrl_msg {
-                        BusCommand::Register(module) => {
+                        BusCommand::Register(module, channel) => {
+                            let identity = module.get_identity();
                             if !self.register(module) {
-                                println!("failed to register the bus, send response back to loader");
+                                sozo_debug!("BusCommand::Register", "critical error occured while attempting to register module: {:?}", identity);
+                                let _ = channel.send(false);
+                                break;
                             }
 
-                            // start it
-                            // return result
+                            let token = self.token.clone();
+                            let msg_channel = self.tx.clone();
+                            let Some(arc_module) = self.modules.get(&identity).cloned() else {
+                                sozo_debug!("BusCommand::Register", "unable to retrieve registered module {:?}", identity);
+                                let _ = channel.send(false);
+                                break;
+                            };
+
+                            let handle = tokio::spawn(async move {
+                                arc_module.run(msg_channel, token).await;
+                            });
+
+                            self.handles.push(handle);
+
+                            if channel.send(true).is_err() {
+                                sozo_debug!("BusCommand::Register", "error while trying to send result back to loader");
+                                break;
+                            }
                         }
                     }
                 }
             }
         }
-
         self.token.cancel();
     }
 
     pub fn get_bus_controller(&self) -> BusController {
-        BusController { tx: self.ctrl_tx.clone() }
+        BusController {
+            tx: self.ctrl_tx.clone(),
+        }
     }
 }
 
@@ -147,4 +180,3 @@ impl Drop for Bus {
 
 /* TODO: Enforce msg lengths across the module bus -- ie network traffic is limited to a max size of 8192; Header + Msg + Padding should not exceed. Current implementation of the bus should ensure that messages do not exceed 4096 byte chunk lengths; currently just pulling from quic packet design */
 /* TODO: Currently not checking for collisions due to sheer size as of now */
-/* TODO: Build out a response via oneshot channel or something so loader knows actual response -- pass in a bool by reference or something -- dispatch calls register and then starts, sends result, etc. */

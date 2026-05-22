@@ -1,9 +1,9 @@
 use super::packet::PacketHeader;
 use super::spki::SpkiVerifier;
-use sozo_api::{Module, ModuleIdentity, BusMessage, sozo_debug};
 use quinn::crypto::rustls::QuicClientConfig;
 use quinn::rustls::pki_types::{CertificateDer, PrivateKeyDer};
 use quinn::{ClientConfig, Connection, Endpoint, TransportConfig};
+use sozo_api::{BusMessage, Module, ModuleIdentity, sozo_debug};
 use std::net::{Ipv4Addr, SocketAddrV4};
 use std::sync::Arc;
 use std::time::Duration;

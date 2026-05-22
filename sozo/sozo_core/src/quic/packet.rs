@@ -1,6 +1,5 @@
-use sozo_api::BusMessage;
 use rand::{Rng, RngExt};
-
+use sozo_api::BusMessage;
 
 /*
 * INBOUND_MESSAGE_SIZE  - Maximum packet length limitation

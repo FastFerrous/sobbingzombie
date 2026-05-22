@@ -1,8 +1,8 @@
-use sozo_api::{sozo_debug};
-use sozo_api::plugin::{ModuleVTable, HostVTable};
+use sozo_api::plugin::{HostVTable, ModuleVTable};
+use sozo_api::sozo_debug;
 use std::ffi::c_void;
-use std::sync::mpsc::{Receiver, SyncSender, sync_channel};
 use std::sync::Mutex;
+use std::sync::mpsc::{Receiver, SyncSender, sync_channel};
 
 struct FileOperations {
     rx: Mutex<Receiver<Vec<u8>>>,
@@ -11,7 +11,7 @@ struct FileOperations {
 
 impl FileOperations {
     fn new() -> FileOperations {
-        const MAX_MSG_BUFFER : usize = 1024;
+        const MAX_MSG_BUFFER: usize = 1024;
         let (tx, rx) = sync_channel::<Vec<u8>>(MAX_MSG_BUFFER);
 
         FileOperations {
@@ -34,7 +34,7 @@ unsafe extern "C" fn plugin_run(instance: *mut c_void, host_vtable: *const HostV
         return;
     }
 
-    let instance = unsafe { &*(instance as * const FileOperations) };
+    let instance = unsafe { &*(instance as *const FileOperations) };
     let host_vtable = unsafe { &*host_vtable };
 
     let rx = match instance.rx.try_lock() {
@@ -42,7 +42,10 @@ unsafe extern "C" fn plugin_run(instance: *mut c_void, host_vtable: *const HostV
         Err(_) => return,
     };
 
-    sozo_debug!("FileOperations::plugin_run", "currently sitting within plugin_run");
+    sozo_debug!(
+        "FileOperations::plugin_run",
+        "currently sitting within plugin_run"
+    );
 
     loop {
         sozo_debug!("FileOperations::plugin_run", "inside loop");
@@ -60,17 +63,20 @@ unsafe extern "C" fn plugin_enqueue(instance: *mut c_void, msg: *const u8, len: 
         return false as u8;
     }
 
-    let slice_msg = unsafe { std::slice::from_raw_parts(msg, len)};
+    let slice_msg = unsafe { std::slice::from_raw_parts(msg, len) };
 
-    let mut msg : Vec<u8> = Vec::new();
-    if msg.try_reserve(slice_msg.len()).is_err(){
+    let mut msg: Vec<u8> = Vec::new();
+    if msg.try_reserve(slice_msg.len()).is_err() {
         return false as u8;
     }
 
     msg.extend_from_slice(slice_msg);
 
     unsafe {
-        (&*(instance as *const FileOperations)).tx.try_send(msg).is_ok() as u8
+        (&*(instance as *const FileOperations))
+            .tx
+            .try_send(msg)
+            .is_ok() as u8
     }
 }
 

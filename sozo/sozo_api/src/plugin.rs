@@ -1,20 +1,26 @@
-use crate::{Module, ModuleIdentity, BusMessage};
-use std::{sync::Arc};
-use tokio::sync::Notify;
-use tokio::task::spawn_blocking;
-use std::{ffi::c_void, slice};
+use crate::{BusMessage, Module, ModuleIdentity, sozo_debug};
 use async_trait::async_trait;
+use std::sync::Arc;
+use std::{ffi::c_void, slice};
+use tokio::sync::Notify;
 use tokio::sync::mpsc::Sender;
+use tokio::task::spawn_blocking;
 use tokio_util::sync::CancellationToken;
 
-unsafe extern "C" fn send_message(context: *mut c_void, local_identity: u32, remote_identity: *const u32, msg: *const u8, len: usize) -> u8 {
+unsafe extern "C" fn send_message(
+    context: *mut c_void,
+    local_identity: u32,
+    remote_identity: *const u32,
+    msg: *const u8,
+    len: usize,
+) -> u8 {
     if context.is_null() || msg.is_null() {
         return false as u8;
     }
 
     let msg_slice = unsafe { slice::from_raw_parts(msg, len) };
     let mut msg: Vec<u8> = Vec::new();
-    if msg.try_reserve(msg_slice.len()).is_err(){
+    if msg.try_reserve(msg_slice.len()).is_err() {
         return false as u8;
     }
 
@@ -23,11 +29,13 @@ unsafe extern "C" fn send_message(context: *mut c_void, local_identity: u32, rem
     let cxt = unsafe { &*(context as *const PluginContext) };
     let remote = unsafe { remote_identity.as_ref().copied() }.map(ModuleIdentity);
 
-    cxt.tx.try_send(BusMessage {
-        identity: ModuleIdentity(local_identity),
-        remote,
-        msg,
-    }).is_ok() as u8
+    cxt.tx
+        .try_send(BusMessage {
+            identity: ModuleIdentity(local_identity),
+            remote,
+            msg,
+        })
+        .is_ok() as u8
 }
 
 unsafe extern "C" fn poll_objects(context: *mut c_void) -> u8 {
@@ -42,7 +50,8 @@ unsafe extern "C" fn poll_objects(context: *mut c_void) -> u8 {
         tokio::select! {
             _ = context.token.cancelled() => PollStatus::Cancelled,
             _ = context.notify.notified() => PollStatus::InboundMessage
-        }.as_u8()
+        }
+        .as_u8()
     })
 }
 
@@ -50,23 +59,26 @@ unsafe extern "C" fn poll_objects(context: *mut c_void) -> u8 {
 #[derive(Copy, Clone, PartialEq, Eq)]
 pub enum PollStatus {
     Cancelled,
-    InboundMessage
+    InboundMessage,
 }
 
 impl PollStatus {
-    fn as_u8(self) -> u8 { self as u8 }
+    fn as_u8(self) -> u8 {
+        self as u8
+    }
 }
 
 struct PluginContext {
     tx: Sender<BusMessage>,
     token: CancellationToken,
-    notify : Arc<Notify>
+    notify: Arc<Notify>,
 }
 
 #[repr(C)]
 pub struct HostVTable {
     pub context: *mut c_void,
-    pub send_bus_message: unsafe extern "C" fn(*mut c_void, u32, *const u32, *const u8, usize) -> u8,
+    pub send_bus_message:
+        unsafe extern "C" fn(*mut c_void, u32, *const u32, *const u8, usize) -> u8,
     pub poll_objects: unsafe extern "C" fn(*mut c_void) -> u8,
 }
 
@@ -80,24 +92,31 @@ pub struct ModuleVTable {
 
 #[repr(C)]
 pub struct ModuleHandle {
-    pub vtable: *const ModuleVTable,    /* static function table declared from foreign module -- this is the returned value from module_init() */
-    pub state: *mut c_void,             /* once we have a handle to the vtable, we initialize the instance with the init() function to obtain a running instance of `self` */
+    pub vtable: *const ModuleVTable, /* static function table declared from foreign module -- this is the returned value from module_init() */
+    pub state: *mut c_void, /* once we have a handle to the vtable, we initialize the instance with the init() function to obtain a running instance of `self` */
 }
 
 pub struct PluginModule {
     identity: ModuleIdentity,
-    handle : ModuleHandle,             /* virtual function address table along with `self` instance */
-    mem_addr : *mut c_void,            /* address from dl_open */
-    notify : Arc<Notify>
+    handle: ModuleHandle, /* virtual function address table along with `self` instance */
+    mem_addr: *mut c_void, /* address from dl_open */
+    notify: Arc<Notify>,
 }
 
 impl PluginModule {
-    pub fn new(mem_addr: *mut c_void, vtable: *const ModuleVTable, instance: *mut c_void) -> PluginModule {
+    pub fn new(
+        mem_addr: *mut c_void,
+        vtable: *const ModuleVTable,
+        instance: *mut c_void,
+    ) -> PluginModule {
         PluginModule {
             identity: ModuleIdentity::get_custom(),
-            handle: ModuleHandle { vtable, state: instance },
+            handle: ModuleHandle {
+                vtable,
+                state: instance,
+            },
             mem_addr,
-            notify: Arc::new(Notify::new())
+            notify: Arc::new(Notify::new()),
         }
     }
 }
@@ -106,16 +125,16 @@ unsafe impl Send for PluginModule {}
 unsafe impl Sync for PluginModule {}
 
 #[async_trait]
-impl Module for PluginModule{
+impl Module for PluginModule {
     fn get_identity(&self) -> ModuleIdentity {
         self.identity
     }
 
-    async fn run(&self, bus_channel: Sender<BusMessage>, token: CancellationToken ) {
+    async fn run(&self, bus_channel: Sender<BusMessage>, token: CancellationToken) {
         /*
          * plugin context
          * stores all required fields that are used during callback operations to signal messages back to plugin during runtime
-        */
+         */
         let cxt = ThreadSafeCVoid(Box::into_raw(Box::new(PluginContext {
             tx: bus_channel,
             token,
@@ -143,20 +162,29 @@ impl Module for PluginModule{
                 drop(Box::from_raw(host_vtable.0 as *mut HostVTable));
                 drop(Box::from_raw(context.0 as *mut PluginContext));
             }
-        }).await;
+        })
+        .await;
+
+        sozo_debug!(
+            "plugin::run",
+            "plugin:{:?} has returned from run operations",
+            self.identity
+        );
     }
 
     fn enqueue(&self, msg: BusMessage) -> bool {
-        let result = unsafe { ((*self.handle.vtable).enqueue)(self.handle.state, msg.msg.as_ptr(), msg.msg.len()) };
+        let result = unsafe {
+            ((*self.handle.vtable).enqueue)(self.handle.state, msg.msg.as_ptr(), msg.msg.len())
+        };
         if result == 1 {
             self.notify.notify_one();
-            return true
+            return true;
         }
         false
     }
 }
 
-impl Drop for PluginModule{
+impl Drop for PluginModule {
     fn drop(&mut self) {
         unsafe {
             ((*self.handle.vtable).destroy)(self.handle.state);

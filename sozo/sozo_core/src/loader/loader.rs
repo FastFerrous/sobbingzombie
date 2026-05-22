@@ -1,13 +1,14 @@
-use std::ffi::{CString, c_void};
+use crate::bus::BusController;
 use libc::{dlopen, dlsym};
+use sozo_api::plugin::{ModuleVTable, PluginModule};
+use sozo_api::{BusMessage, Module, ModuleIdentity, sozo_debug};
+use std::ffi::{CString, c_void};
+use tokio::sync::Mutex;
 use tokio::sync::mpsc::{Receiver, Sender};
 use tokio_util::sync::CancellationToken;
-use sozo_api::{Module, ModuleIdentity, BusMessage, sozo_debug};
-use sozo_api::plugin::{ModuleVTable, PluginModule};
-use tokio::sync::Mutex;
 
 struct FileDescriptor {
-    fd : i32
+    fd: i32,
 }
 
 impl FileDescriptor {
@@ -20,9 +21,9 @@ impl TryFrom<i32> for FileDescriptor {
     type Error = ();
     fn try_from(fd: i32) -> Result<Self, Self::Error> {
         if fd < 0 {
-            return Err(())
+            return Err(());
         } else {
-            Ok(FileDescriptor{fd})
+            Ok(FileDescriptor { fd })
         }
     }
 }
@@ -46,37 +47,36 @@ enum LoadError {
     UnableToWrite,
     UnableToDlOpen,
     ExportNotFound,
-    UnableToCreateInstance
+    UnableToCreateInstance,
 }
 
 enum LoadState {
     Idle,
-    Loading {
-        so_size: usize,
-        so_data: Vec<u8>
-    }
+    Loading { so_size: usize, so_data: Vec<u8> },
 }
 
 pub struct LibraryLoader {
     identity: ModuleIdentity,
     tx: Sender<BusMessage>,
     rx: Mutex<Receiver<BusMessage>>,
+    bus_ctrl: BusController,
 }
 
 impl LibraryLoader {
-    pub fn new() -> LibraryLoader {
+    pub fn new(bus_ctrl: BusController) -> LibraryLoader {
         const MAX_MSG_BUFFER: usize = 1024;
         let (tx, rx) = tokio::sync::mpsc::channel::<BusMessage>(MAX_MSG_BUFFER);
 
         LibraryLoader {
             identity: ModuleIdentity::LOADER,
             tx,
-            rx : Mutex::new(rx)
+            rx: Mutex::new(rx),
+            bus_ctrl,
         }
     }
 
     fn handle_inbound_msg(&self, state: &mut LoadState, msg: &[u8]) -> Result<Vec<u8>, LoadError> {
-        const MAX_SO_SIZE : usize = 1024 * 1024;
+        const MAX_SO_SIZE: usize = 1024 * 1024;
 
         match state {
             LoadState::Idle => {
@@ -94,14 +94,11 @@ impl LibraryLoader {
                     return Err(LoadError::Critical);
                 }
 
-                *state = LoadState::Loading {
-                    so_size,
-                    so_data
-                };
+                *state = LoadState::Loading { so_size, so_data };
 
                 Err(LoadError::Waiting)
-            },
-            LoadState::Loading {so_size, so_data} => {
+            }
+            LoadState::Loading { so_size, so_data } => {
                 let remaining_size = *so_size - so_data.len();
                 if msg.len() > remaining_size {
                     return Err(LoadError::InvalidLength);
@@ -121,22 +118,18 @@ impl LibraryLoader {
     }
 
     fn load_shared_object(&self, lib_so: &[u8]) -> Result<*mut c_void, LoadError> {
-
-        let fd = unsafe {
-            libc::memfd_create(c"plugin".as_ptr(), libc::MFD_CLOEXEC)
-        };
+        let fd = unsafe { libc::memfd_create(c"plugin".as_ptr(), libc::MFD_CLOEXEC) };
 
         if fd < 0 {
             return Err(LoadError::UnableToMemCreate);
         }
 
         let Ok(fd) = FileDescriptor::try_from(fd) else {
-            return Err(LoadError::Critical)
+            return Err(LoadError::Critical);
         };
 
-        let result = unsafe {
-            libc::write(fd.as_raw(), lib_so.as_ptr() as *const c_void, lib_so.len())
-        };
+        let result =
+            unsafe { libc::write(fd.as_raw(), lib_so.as_ptr() as *const c_void, lib_so.len()) };
 
         if -1 == result || lib_so.len() as isize != result {
             return Err(LoadError::UnableToWrite);
@@ -149,9 +142,7 @@ impl LibraryLoader {
             }
         };
 
-        let address = unsafe {
-            dlopen(file_path.as_ptr(), libc::RTLD_NOW | libc::RTLD_LOCAL)
-        };
+        let address = unsafe { dlopen(file_path.as_ptr(), libc::RTLD_NOW | libc::RTLD_LOCAL) };
 
         if address.is_null() {
             return Err(LoadError::UnableToDlOpen);
@@ -167,18 +158,17 @@ impl LibraryLoader {
 
         let export_name = match CString::new("module_entry") {
             Ok(name) => name,
-            Err(_) => return Err(LoadError::Critical)
+            Err(_) => return Err(LoadError::Critical),
         };
 
-        let export_addr = unsafe {
-            dlsym(so_addr, export_name.as_ptr())
-        };
+        let export_addr = unsafe { dlsym(so_addr, export_name.as_ptr()) };
 
         if export_addr.is_null() {
             return Err(LoadError::ExportNotFound);
         }
 
-        let module_entry: extern "C" fn() -> * const ModuleVTable = unsafe { std::mem::transmute(export_addr) };
+        let module_entry: extern "C" fn() -> *const ModuleVTable =
+            unsafe { std::mem::transmute(export_addr) };
 
         let module_vtable = module_entry();
         if module_vtable.is_null() {
@@ -190,11 +180,7 @@ impl LibraryLoader {
             return Err(LoadError::UnableToCreateInstance);
         }
 
-        Ok(PluginModule::new(
-            so_addr,
-            module_vtable,
-            instance)
-        )
+        Ok(PluginModule::new(so_addr, module_vtable, instance))
     }
 }
 
@@ -209,6 +195,10 @@ impl Module for LibraryLoader {
 
         let mut rx = self.rx.lock().await;
         let mut state = LoadState::Idle;
+
+        // debug
+        // read it and write it all
+        // end debug
 
         loop {
             tokio::select! {
@@ -254,8 +244,12 @@ impl Module for LibraryLoader {
                             }
                         };
 
+                        if !self.bus_ctrl.register(Box::new(plugin)).await {
+                            sozo_debug!("LibraryLoader::run", "error occured while performing registration and execution of requested plugin");
+                            break;
+                        }
 
-
+                        sozo_debug!("LibraryLoader::run", "plugin successfully registered and executed within module bus");
                     } else {
                         break;
                     }
@@ -270,6 +264,7 @@ impl Module for LibraryLoader {
     }
 }
 
-// paused until bus controller is created so that it can be passed into the loader module
+// todo: test it by having it loade the shared object in the run to simulate getting that data form the wire and then have it do the thing
+
 // need to craft the error response back to shell module from load and create -- currently just `continue`
 // if we reigster successfully, we need to respond back with retcode as well as the identity number os it can be registered locally on c2

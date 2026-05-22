@@ -53,11 +53,13 @@ fn sozo_init() {
         }
 
         let mut bus = bus::Bus::new();
+        let controller = bus.get_bus_controller();
+
         let Some(shell) = shell::Shell::new() else {
             sozo_debug!("sozo_init", "unable to load shell module");
             return;
         };
-        let loader = loader::LibraryLoader::new();
+        let loader = loader::LibraryLoader::new(controller);
 
         if !bus.register(Box::new(quic)) {
             sozo_debug!("sozo_init", "unable to register Comms module");

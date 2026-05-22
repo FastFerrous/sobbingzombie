@@ -2,7 +2,7 @@ use super::ls::DirWalker;
 use super::netstat::Netstat;
 use super::tasklist::Tasklist;
 use crate::quic::MAXIMUM_DATA_SIZE;
-use sozo_api::{Module, ModuleIdentity, BusMessage, sozo_debug};
+use sozo_api::{BusMessage, Module, ModuleIdentity, sozo_debug};
 use std::fs;
 use tokio::sync::Mutex;
 use tokio::sync::mpsc::{Receiver, Sender};
