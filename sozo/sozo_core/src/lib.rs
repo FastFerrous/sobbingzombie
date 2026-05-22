@@ -101,4 +101,3 @@ fn init() {
 }
 
 //TODO: Configure named sephamore to avoid multiple loads of shared object
-//TODO: Go through and add debug lines in all failing cases within shell for tracking purposes

@@ -230,7 +230,3 @@ impl Module for Quic {
  * Single channel for main communication and all modules within the module bus
  * Once tunneling has been added, it will be an extension of Quinn and will be tied to QUIC streams directly -- this will bypass the module
 */
-
-/* TODO: Listener
- * create a flag value within environment + a getter fn to determine current configuration ie get_config()
-*/

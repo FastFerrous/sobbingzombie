@@ -35,3 +35,5 @@ impl ModuleIdentity {
         ModuleIdentity(rand::random::<u32>() & CUSTOM_IDENTITY_RANGE)
     }
 }
+
+/* TODO: Currently using comms to limit the message size that is carried by the bus -- move that here so that bus message is limited */

@@ -178,5 +178,4 @@ impl Drop for Bus {
     }
 }
 
-/* TODO: Enforce msg lengths across the module bus -- ie network traffic is limited to a max size of 8192; Header + Msg + Padding should not exceed. Current implementation of the bus should ensure that messages do not exceed 4096 byte chunk lengths; currently just pulling from quic packet design */
-/* TODO: Currently not checking for collisions due to sheer size as of now */
+/* TODO: Add methods to prevent key collisions -- currently not concenred while performing testing as chances are basically non existant */
