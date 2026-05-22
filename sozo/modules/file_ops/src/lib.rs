@@ -1,8 +1,31 @@
-use sozo_api::plugin::{HostVTable, ModuleVTable};
+use sozo_api::plugin::{HostVTable, ModuleVTable, PollStatus};
 use sozo_api::sozo_debug;
 use std::ffi::c_void;
 use std::sync::Mutex;
 use std::sync::mpsc::{Receiver, SyncSender, sync_channel};
+
+#[repr(u8)]
+#[derive(Copy, Clone, PartialEq, Eq)]
+enum FileOpsCommands {
+    Cat,
+    Copy,
+    Remove,
+    Move,
+}
+
+impl TryFrom<u8> for FileOpsCommands {
+    type Error = ();
+
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
+        match value {
+            0 => Ok(FileOpsCommands::Cat),
+            1 => Ok(FileOpsCommands::Copy),
+            2 => Ok(FileOpsCommands::Remove),
+            3 => Ok(FileOpsCommands::Move),
+            _ => Err(()),
+        }
+    }
+}
 
 struct FileOperations {
     rx: Mutex<Receiver<Vec<u8>>>,
@@ -44,16 +67,39 @@ unsafe extern "C" fn plugin_run(instance: *mut c_void, host_vtable: *const HostV
 
     sozo_debug!(
         "FileOperations::plugin_run",
-        "currently sitting within plugin_run"
+        "waiting for inbound file_ops requests"
     );
 
     loop {
-        sozo_debug!("FileOperations::plugin_run", "inside loop");
-        let result = unsafe { (host_vtable.poll_objects)(host_vtable.context) };
-        sozo_debug!("FileOperations::plugin_run", "result was {}", result);
-        if result == 0 {
-            sozo_debug!("FileOperations::plugin_run", "token was cancelled");
-            break;
+        let result =
+            PollStatus::try_from(unsafe { (host_vtable.poll_objects)(host_vtable.context) })
+                .unwrap();
+
+        match result {
+            PollStatus::Cancelled => break,
+            PollStatus::InboundMessage => {
+                let Ok(msg) = rx.try_recv() else { break };
+
+                if msg.is_empty() {
+                    sozo_debug!("FileOperations::plugin_run", "inbound message was empty");
+                    break;
+                }
+
+                let Ok(opcode) = FileOpsCommands::try_from(msg[0]) else {
+                    sozo_debug!(
+                        "FileOperations::plugin_run",
+                        "invalid opcode received from message"
+                    );
+                    break;
+                };
+
+                match opcode {
+                    FileOpsCommands::Cat => sozo_debug!("FileOperations::plugin_run", "Cat"),
+                    FileOpsCommands::Copy => sozo_debug!("FileOperations::plugin_run", "Copy"),
+                    FileOpsCommands::Remove => sozo_debug!("FileOperations::plugin_run", "Remove"),
+                    FileOpsCommands::Move => sozo_debug!("FileOperations::plugin_run", "Move"),
+                }
+            }
         }
     }
 }

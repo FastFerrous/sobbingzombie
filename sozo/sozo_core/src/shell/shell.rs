@@ -209,6 +209,11 @@ impl Module for Shell {
         self.identity
     }
     async fn run(&self, bus_channel: Sender<BusMessage>, token: CancellationToken) {
+        sozo_debug!(
+            "Shell::run",
+            "Shell has been executed, performing host check-in procedure"
+        );
+
         if self.perform_checkin(&bus_channel).await.is_err() {
             token.cancel();
             return;
