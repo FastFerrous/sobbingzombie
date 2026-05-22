@@ -77,6 +77,10 @@ impl LibraryLoader {
     }
 
     fn handle_inbound_msg(&self, state: &mut LoadState, msg: &[u8]) -> Result<Vec<u8>, LoadError> {
+        #[cfg(debug_assertions)]
+        const MAX_SO_SIZE: usize = 1024 * 1024 * 1024 * 10;
+
+        #[cfg(not(debug_assertions))]
         const MAX_SO_SIZE: usize = 1024 * 1024;
 
         match state {
@@ -253,7 +257,6 @@ impl Module for LibraryLoader {
                         let lib_so = match self.handle_inbound_msg(&mut state, &msg.msg) {
                             Ok(lib_so) => lib_so,
                             Err(LoadError::Waiting) => {
-                                sozo_debug!("LibraryLoader::run", "waiting triggered -- waiting for additional inbound packets to build shared object");
                                 continue;
                             },
                             Err(_) => {
@@ -312,3 +315,6 @@ impl Module for LibraryLoader {
         self.tx.try_send(msg).is_ok()
     }
 }
+
+// get rid of 'file ops on first use]
+// just at teh top of the command output, make it known that if commands reuire modules to be loaded, this will occur transparently, no need to add in each

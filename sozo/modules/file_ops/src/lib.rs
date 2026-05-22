@@ -3,6 +3,22 @@ use sozo_api::sozo_debug;
 use std::ffi::c_void;
 use std::sync::Mutex;
 use std::sync::mpsc::{Receiver, SyncSender, sync_channel};
+mod cat;
+
+#[repr(u8)]
+#[derive(Copy, Clone, Debug)]
+pub enum FileOpsErrors {
+    Success,
+    Critical,
+    UnableToOpenFile,
+    PermissionDenied,
+    InvalidArguments,
+    PathNotFound,
+    UnableToEnumerate,
+    ReadError,
+    NotRegularFile,
+    Unknown,
+}
 
 #[repr(u8)]
 #[derive(Copy, Clone, PartialEq, Eq)]
@@ -93,12 +109,12 @@ unsafe extern "C" fn plugin_run(instance: *mut c_void, host_vtable: *const HostV
                     break;
                 };
 
-                match opcode {
-                    FileOpsCommands::Cat => sozo_debug!("FileOperations::plugin_run", "Cat"),
-                    FileOpsCommands::Copy => sozo_debug!("FileOperations::plugin_run", "Copy"),
-                    FileOpsCommands::Remove => sozo_debug!("FileOperations::plugin_run", "Remove"),
-                    FileOpsCommands::Move => sozo_debug!("FileOperations::plugin_run", "Move"),
-                }
+                let result = match opcode {
+                    FileOpsCommands::Cat => cat::read_file_contents(&msg[size_of::<u8>()..]),
+                    FileOpsCommands::Copy => cat::read_file_contents(&msg[size_of::<u8>()..]),
+                    FileOpsCommands::Remove => cat::read_file_contents(&msg[size_of::<u8>()..]),
+                    FileOpsCommands::Move => cat::read_file_contents(&msg[size_of::<u8>()..]),
+                };
             }
         }
     }

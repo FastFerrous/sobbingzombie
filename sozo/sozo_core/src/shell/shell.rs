@@ -179,14 +179,6 @@ impl Shell {
             chunk_msg.extend_from_slice(&(chunk.len() as u32).to_be_bytes());
             chunk_msg.extend_from_slice(chunk);
 
-            println!(
-                "Sending {} bytes out of {} as chunk {} out of total chuncks {}",
-                chunk_msg.len(),
-                data.len(),
-                chunk_index,
-                total_chunks
-            );
-
             if bus
                 .send(BusMessage {
                     identity: ModuleIdentity::COMMS,
