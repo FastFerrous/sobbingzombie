@@ -196,10 +196,6 @@ impl Module for LibraryLoader {
         let mut rx = self.rx.lock().await;
         let mut state = LoadState::Idle;
 
-        // debug
-        // read it and write it all
-        // end debug
-
         loop {
             tokio::select! {
                 _ = token.cancelled() => {
@@ -263,8 +259,6 @@ impl Module for LibraryLoader {
         self.tx.try_send(msg).is_ok()
     }
 }
-
-// todo: test it by having it loade the shared object in the run to simulate getting that data form the wire and then have it do the thing
 
 // need to craft the error response back to shell module from load and create -- currently just `continue`
 // if we reigster successfully, we need to respond back with retcode as well as the identity number os it can be registered locally on c2
