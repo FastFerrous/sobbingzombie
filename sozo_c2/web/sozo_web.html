@@ -820,6 +820,14 @@
                 background: var(--purple-dim);
                 color: #c0a0e8;
             }
+            .rl-tag.load {
+                background: var(--amber-lo);
+                color: var(--amber);
+            }
+            .rl-tag.load {
+                background: var(--amber-lo);
+                color: var(--amber);
+            }
 
             #rc-banner {
                 display: none;
@@ -978,17 +986,50 @@
                     name: "help",
                     aliases: ["?"],
                     help: "Show this help (local only)",
+                    module: null,
                 },
-                { name: "ps", aliases: [], help: "List running processes" },
+                {
+                    name: "ps",
+                    aliases: [],
+                    help: "List running processes",
+                    module: null,
+                },
                 {
                     name: "netstat",
                     aliases: [],
                     help: "Show network connections",
+                    module: null,
                 },
                 {
                     name: "ls",
                     aliases: [],
-                    help: "List directory contents  [path]",
+                    help: "List directory  [path]",
+                    module: null,
+                },
+                // file_ops module — loaded on first use from ./modules/file_ops.so
+                {
+                    name: "cat",
+                    aliases: [],
+                    help: "Print file contents  <path>",
+                    module: "file_ops",
+                },
+                {
+                    name: "copy",
+                    aliases: [],
+                    help: "Copy file  <src> <dst>",
+                    module: "file_ops",
+                },
+                {
+                    name: "remove",
+                    aliases: [],
+                    help: "Remove a file  <path>",
+                    module: "file_ops",
+                },
+                {
+                    name: "move",
+                    aliases: [],
+                    help: "Move / rename a file  <src> <dst>",
+                    module: "file_ops",
                 },
             ];
             const CMD_MAP = {};
@@ -1163,6 +1204,12 @@
                     case "alias":
                         onAlias(msg);
                         break;
+                    case "load_start":
+                        onLoadStart(msg);
+                        break;
+                    case "load_result":
+                        onLoadResult(msg);
+                        break;
                     case "error":
                         onError(msg);
                         break;
@@ -1307,6 +1354,12 @@
                     case "ls":
                         renderLs(entry, data);
                         break;
+                    case "cat":
+                        renderCat(entry, data);
+                        break;
+                    case "fileops":
+                        renderFileops(entry, data);
+                        break;
                     default:
                         pushLine(entry, JSON.stringify(data), "recv");
                 }
@@ -1373,6 +1426,43 @@
                 updateFilterOptions();
             }
 
+            function onLoadStart(msg) {
+                const entry = msg.seq !== undefined ? S.pending[msg.seq] : null;
+                const line = `loading module '${msg.module_name}' — transferring to agent…`;
+                if (entry) pushLine(entry, line, "info");
+                rawLog("load", line);
+            }
+
+            function onLoadResult(msg) {
+                const entry = msg.seq !== undefined ? S.pending[msg.seq] : null;
+                if (msg.success) {
+                    const line = `module '${msg.module_name}' loaded (${msg.identity}) — retrying command…`;
+                    if (entry) pushLine(entry, line, "info");
+                    rawLog("load", line);
+                    if (msg.module_name === "file_ops") {
+                        ["cat", "copy", "remove", "move"].forEach((name) => {
+                            if (!CMD_MAP[name]) {
+                                const c = {
+                                    name,
+                                    aliases: [],
+                                    help: `${name} — file_ops`,
+                                    module: "file_ops",
+                                };
+                                COMMANDS.push(c);
+                                CMD_MAP[name] = c;
+                            }
+                        });
+                    }
+                } else {
+                    const line = `module '${msg.module_name}' failed: ${msg.error}`;
+                    if (entry) {
+                        pushLine(entry, line, "err");
+                        finalizeEntry(entry, "err");
+                    }
+                    rawLog("err", line);
+                }
+            }
+
             function onError(msg) {
                 const entry = msg.seq !== undefined ? S.pending[msg.seq] : null;
                 if (entry) {
@@ -1412,6 +1502,41 @@
                 entry.lines.push({
                     text: `${entries.length} entries`,
                     cls: "info",
+                });
+                if (S.selectedId === entry.id) renderOutputBody(entry);
+            }
+
+            function renderCat(entry, data) {
+                entry.structuredView = {
+                    type: "cat",
+                    content: data.content || "",
+                    binary: data.binary || false,
+                    size: data.size || 0,
+                };
+                if (data.binary) {
+                    entry.lines.push({
+                        text: `binary file · ${fmtSize(data.size || 0)}`,
+                        cls: "warn",
+                    });
+                } else {
+                    const lines = (data.content || "").split("\n").length;
+                    entry.lines.push({
+                        text: `${lines} lines · ${fmtSize(data.size || 0)}`,
+                        cls: "info",
+                    });
+                }
+                if (S.selectedId === entry.id) renderOutputBody(entry);
+            }
+
+            function renderFileops(entry, data) {
+                entry.structuredView = {
+                    type: "fileops",
+                    success: data.success,
+                    error: data.error,
+                };
+                entry.lines.push({
+                    text: data.success ? "✓ success" : `✗ ${data.error}`,
+                    cls: data.success ? "info" : "err",
                 });
                 if (S.selectedId === entry.id) renderOutputBody(entry);
             }
@@ -1604,8 +1729,8 @@
                 tbl.className = "proc-table";
 
                 const cg = document.createElement("colgroup");
-                // PERMS, LINKS, CTIME, MTIME, SIZE — tight
-                for (let i = 0; i < 5; i++) {
+                // PERMS, INODE, LINKS, CTIME, MTIME, SIZE — tight
+                for (let i = 0; i < 6; i++) {
                     const c = document.createElement("col");
                     cg.appendChild(c);
                 }
@@ -1622,6 +1747,7 @@
 
                 tbl.innerHTML += `<thead><tr>
     <th class="col-tight">PERMS</th>
+    <th class="col-tight col-pid">INODE</th>
     <th class="col-tight col-pid">LINKS</th>
     <th class="col-tight col-time">CTIME</th>
     <th class="col-tight col-time">MTIME</th>
@@ -1649,6 +1775,7 @@
                     const tr = document.createElement("tr");
                     tr.innerHTML =
                         `<td class="col-tight col-tty">${perms}</td>` +
+                        `<td class="col-tight col-pid">${e.inode}</td>` +
                         `<td class="col-tight col-pid">${e.link_count}</td>` +
                         `<td class="col-tight col-time">${fmtTime(e.ctime)}</td>` +
                         `<td class="col-tight col-time">${fmtTime(e.mtime)}</td>` +
@@ -1688,6 +1815,47 @@
                 if (bytes < 1024 * 1024 * 1024)
                     return `${(bytes / 1024 / 1024).toFixed(1)}M`;
                 return `${(bytes / 1024 / 1024 / 1024).toFixed(1)}G`;
+            }
+
+            function buildCatDOM(content, binary, size) {
+                const wrap = document.createElement("div");
+                if (!content && !size) {
+                    const sp = document.createElement("span");
+                    sp.className = "out-line sys";
+                    sp.textContent = "(empty file)";
+                    wrap.appendChild(sp);
+                    return wrap;
+                }
+                if (binary) {
+                    const note = document.createElement("span");
+                    note.className = "out-line warn";
+                    note.textContent = `binary file (${fmtSize(size)}) — displaying as latin-1`;
+                    wrap.appendChild(note);
+                }
+                const pre = document.createElement("pre");
+                pre.style.cssText =
+                    "color:var(--text);font-family:inherit;font-size:12px;line-height:1.6;white-space:pre-wrap;word-break:break-all;margin-top:6px;";
+                pre.textContent = content;
+                wrap.appendChild(pre);
+                const lineCount =
+                    content.split("\n").length -
+                    (content.endsWith("\n") ? 1 : 0);
+                const footer = document.createElement("div");
+                footer.className = "proc-count";
+                footer.textContent = binary
+                    ? fmtSize(size)
+                    : `${lineCount} line${lineCount !== 1 ? "s" : ""} · ${fmtSize(size)}`;
+                wrap.appendChild(footer);
+                return wrap;
+            }
+
+            function buildFileopsDOM(success, error) {
+                const sp = document.createElement("span");
+                sp.className = "out-line " + (success ? "info" : "err");
+                sp.textContent = success
+                    ? "✓ operation completed successfully"
+                    : `✗ ${error}`;
+                return sp;
             }
 
             function buildCheckinDOM(d) {
@@ -1783,6 +1951,16 @@
                             break;
                         case "ls":
                             body.appendChild(buildLsDOM(sv.entries));
+                            break;
+                        case "cat":
+                            body.appendChild(
+                                buildCatDOM(sv.content, sv.binary, sv.size),
+                            );
+                            break;
+                        case "fileops":
+                            body.appendChild(
+                                buildFileopsDOM(sv.success, sv.error),
+                            );
                             break;
                         case "checkin":
                             body.appendChild(buildCheckinDOM(sv.data));
@@ -2023,26 +2201,27 @@
                     structuredView: null,
                     doneTimer: null,
                 };
-                entry.lines.push(
-                    { text: "sozo command reference", cls: "help-h" },
-                    { text: "", cls: "sys" },
-                );
+                entry.lines.push({
+                    text: "sozo command reference",
+                    cls: "help-h",
+                });
+                entry.lines.push({
+                    text: "Commands that require a module will have it loaded transparently on first use.",
+                    cls: "sys",
+                });
+                entry.lines.push({ text: "", cls: "sys" });
                 COMMANDS.forEach((c) => {
                     const al = c.aliases.length
                         ? `  (${c.aliases.join(", ")})`
                         : "";
-                    entry.lines.push(
-                        { text: c.name + al, cls: "help-h" },
-                        { text: c.help, cls: "help-c" },
-                    );
+                    entry.lines.push({ text: c.name + al, cls: "help-h" });
+                    entry.lines.push({ text: c.help, cls: "help-c" });
                 });
-                entry.lines.push(
-                    { text: "", cls: "sys" },
-                    {
-                        text: "Unrecognised commands are rejected — add them to modules.py to enable.",
-                        cls: "sys",
-                    },
-                );
+                entry.lines.push({ text: "", cls: "sys" });
+                entry.lines.push({
+                    text: "Commands that require a module will have it loaded transparently on first use.",
+                    cls: "sys",
+                });
                 S.entries.push(entry);
                 S.entryById[id] = entry;
                 addCardItem(entry);

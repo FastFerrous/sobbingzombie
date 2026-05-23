@@ -71,6 +71,10 @@ log = logging.getLogger("bridge")
 _HERE = Path(__file__).parent
 UI_FILE = _HERE / "web" / "sozo_web.html"  # served by HTTP
 
+# Command timeout in seconds — server-side busy lock force-released if no recv.
+# Match or exceed the browser-side CMD_TIMEOUT (15s).
+CMD_TIMEOUT_S = 15
+
 # ---------------------------------------------------------------------------
 # Runtime config
 # ---------------------------------------------------------------------------
@@ -101,6 +105,10 @@ inflight: dict[int, int] = {}  # conn_identity → seq
 # Busy lock — Shell is a sync single-stream module. Only one command can be
 # in-flight per connection at a time. Set True on send, cleared on recv or disc.
 conn_busy: dict[int, bool] = {}  # conn_identity → busy
+
+# Stores the original seq for a command that triggered a module load.
+# Used to re-tag the recv after auto-retry so the browser card gets its output.
+pending_cmd_seqs: dict[int, int] = {}  # conn_identity → seq
 
 # ---------------------------------------------------------------------------
 # Token generation
@@ -173,7 +181,40 @@ async def event_consumer() -> None:
                 # Release busy lock — connection is ready for next command
                 conn_busy.pop(conn_id, None)
 
-            # Clear busy lock and inflight on disconnect
+            elif event.get("type") == "load_result":
+                try:
+                    conn_id = int(event.get("id", "0x0"), 16)
+                except (ValueError, TypeError):
+                    conn_id = 0
+
+                # Release busy lock — load counts as a completed operation
+                inflight.pop(conn_id, None)
+                conn_busy.pop(conn_id, None)
+
+                if event.get("success") and event.get("pending_cmd"):
+                    pending_cmd = event["pending_cmd"]
+                    proto = quic_server.active_connections.get(conn_id)
+                    retry_seq = pending_cmd_seqs.pop(conn_id, None)
+
+                    if proto and retry_seq is not None:
+                        ok = proto.send_command(pending_cmd)
+                        if ok:
+                            inflight[conn_id] = retry_seq
+                            conn_busy[conn_id] = True
+                            log.info(
+                                f"Auto-retry '{pending_cmd}' seq={retry_seq} after load"
+                            )
+                        else:
+                            log.error(
+                                f"Auto-retry send_command failed for '{pending_cmd}'"
+                            )
+                    else:
+                        log.warning(
+                            f"Auto-retry skipped — proto={proto} retry_seq={retry_seq}"
+                        )
+                else:
+                    # Load failed — clear pending seq
+                    pending_cmd_seqs.pop(conn_id, None)
             if event.get("type") == "disc":
                 try:
                     disc_id = int(event.get("id", "0x0"), 16)
@@ -181,6 +222,7 @@ async def event_consumer() -> None:
                     disc_id = 0
                 inflight.pop(disc_id, None)
                 conn_busy.pop(disc_id, None)
+                pending_cmd_seqs.pop(disc_id, None)
 
             await broadcast(event)
         except Exception as e:
@@ -323,6 +365,57 @@ async def ws_handler(ws) -> None:
                             },
                         )
                         continue
+                    # Hard gate: resolve before anything touches the wire.
+                    # None = unknown, ("load_required", name) = needs load,
+                    # (identity, payload) = ready to send.
+                    import modules as _mod
+
+                    resolve = _mod.resolve_command(cmd_text)
+
+                    if resolve is None:
+                        await send_ws(
+                            ws,
+                            {
+                                "type": "error",
+                                "msg": f"Unknown command '{cmd_text.split()[0]}' — type ? for help",
+                                "seq": seq,
+                            },
+                        )
+                        continue
+
+                    if isinstance(resolve, tuple) and resolve[0] == "load_required":
+                        module_name = resolve[1]
+                        await broadcast(
+                            {
+                                "type": "load_start",
+                                "id": hex(cid),
+                                "module_name": module_name,
+                                "seq": seq,
+                                "cmd": cmd_text,
+                            }
+                        )
+                        try:
+                            ok = proto.send_load_sequence(module_name, cmd_text)
+                        except Exception as e:
+                            log.error(f"send_load_sequence failed: {e}")
+                            ok = False
+                        if not ok:
+                            await send_ws(
+                                ws,
+                                {
+                                    "type": "error",
+                                    "msg": f"Module '{module_name}.so' not found in ./modules/",
+                                    "seq": seq,
+                                },
+                            )
+                            continue
+                        targets_hit.append(hex(conn_id))
+                        inflight[cid] = seq
+                        conn_busy[cid] = True
+                        pending_cmd_seqs[cid] = seq
+                        continue
+
+                    # Command is fully resolved — send it
                     try:
                         ok = proto.send_command(cmd_text)
                         if not ok:
@@ -330,7 +423,7 @@ async def ws_handler(ws) -> None:
                                 ws,
                                 {
                                     "type": "error",
-                                    "msg": f"Unrecognised command '{cmd_text.split()[0]}'",
+                                    "msg": "Stream busy — previous response still assembling",
                                     "seq": seq,
                                 },
                             )
@@ -354,6 +447,43 @@ async def ws_handler(ws) -> None:
                     }
                     await broadcast(ack)
                     log.info(f"CMD seq={seq} '{cmd_text}' → {targets_hit}")
+
+                    # Server-side timeout — if no recv arrives within CMD_TIMEOUT_S,
+                    # clear the busy lock and broadcast an error so the browser card
+                    # is marked failed and the input is unlocked.
+                    # The browser has its own JS timeout too, but that doesn't clear
+                    # the server-side conn_busy/inflight state.
+                    async def _cmd_timeout(cids: list, s: int, txt: str) -> None:
+                        await asyncio.sleep(CMD_TIMEOUT_S)
+                        for c in cids:
+                            if conn_busy.get(c) and inflight.get(c) == s:
+                                log.warning(
+                                    f"CMD timeout seq={s} '{txt}' on {hex(c)} — releasing busy lock"
+                                )
+                                inflight.pop(c, None)
+                                conn_busy.pop(c, None)
+                                pending_cmd_seqs.pop(c, None)
+                                await broadcast(
+                                    {
+                                        "type": "recv",
+                                        "id": hex(c),
+                                        "seq": s,
+                                        "error": f"timeout — no response after {CMD_TIMEOUT_S}s",
+                                        "data": None,
+                                    }
+                                )
+
+                    asyncio.create_task(
+                        _cmd_timeout(
+                            [
+                                proto.conn_identity
+                                for _, proto in conns
+                                if hex(proto.conn_identity) in targets_hit
+                            ],
+                            seq,
+                            cmd_text,
+                        )
+                    )
 
             # ── RENAME ───────────────────────────────────────────────────────
             elif mtype == "rename":

@@ -62,40 +62,40 @@ def _push_event(event: dict) -> None:
 class SozoServerProtocol(QuicConnectionProtocol):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        # Routing identity for this connection (used in active_connections)
         self.conn_identity: int | None = None
         self.peer_addr: str = "unknown"
         self.alias: str | None = None
 
-        # Chunk reassembly state per stream.
         # stream_id → ChunkBuffer
         self._chunks: dict[int, mod.ChunkBuffer] = {}
 
-        # Per-stream raw byte buffer — handles packets split across events
-        # or multiple packets coalesced into one event.
+        # stream_id → raw bytes (partial packet accumulation)
         self._stream_buf: dict[int, bytes] = {}
 
-        # Opcode tracking: we need to remember what opcode was sent so the
-        # response decoder knows which sub-format to use.
-        # stream_id → opcode (set when we send a command, used when recv arrives)
+        # stream_id → opcode sent
         self._stream_opcodes: dict[int, int] = {}
 
-        # Module identity of the last command sent per stream
-        # stream_id → module_identity
+        # stream_id → module identity sent
         self._stream_module: dict[int, int] = {}
 
-        # Set to True once the Shell check-in has been received.
-        # After that, no incoming SHELL packet is ever treated as a check-in.
+        # True once the Shell check-in has been received
         self._checkin_received: bool = False
 
-    # ── Public API ───────────────────────────────────────────────────────────
+        # True while a module load sequence is in progress on stream 0.
+        # The load response (5 bytes) is handled separately from normal
+        # command responses.
+        self._load_in_progress: bool = False
+        self._load_module_name: str | None = None
+        # Command text to retry automatically after a successful load
+        self._load_pending_cmd: str | None = None
+
+    # ── Public API ────────────────────────────────────────────────────────────
 
     def send_command(self, cmd_text: str) -> bool:
         """
-        Resolve cmd_text through the module registry, craft and send the packet.
-        Shell is a persistent single-stream sync module — all commands use
-        stream 0 and are processed one at a time by the agent.
-        Returns True on success, False if the command is unrecognised.
+        Resolve cmd_text and send.  Returns True on success.
+        Returns False if unrecognised (not loadable either — bridge handles
+        the load_required case before calling here).
         """
         result = mod.resolve_command(cmd_text)
         if result is None:
@@ -108,21 +108,20 @@ class SozoServerProtocol(QuicConnectionProtocol):
             )
             return False
 
+        if isinstance(result, tuple) and result[0] == "load_required":
+            # Should not reach here — bridge handles this path
+            return False
+
         module_identity, payload = result
         opcode = payload[0] if payload else -1
-
-        # Shell always uses stream 0 — single persistent stream per connection.
-        # Refuse to send if a chunk buffer is still accumulating for stream 0,
-        # which means the previous response hasn't finished arriving yet.
-        # bridge.py's conn_busy lock should prevent this in normal operation,
-        # but this is a second line of defence at the protocol level.
         stream_id = 0
+
         if stream_id in self._chunks:
             _push_event(
                 {
                     "type": "log",
                     "level": "warn",
-                    "msg": f"send_command('{cmd_text}') blocked — stream {stream_id} still reassembling previous response",
+                    "msg": f"send_command('{cmd_text}') blocked — stream {stream_id} still reassembling",
                 }
             )
             return False
@@ -135,6 +134,46 @@ class SozoServerProtocol(QuicConnectionProtocol):
         self.transmit()
         return True
 
+    def send_load_sequence(self, module_name: str, pending_cmd: str) -> bool:
+        """
+        Stream a .so over stream 0:
+          Packet 1: craft_packet(LOADER, u32_be_size)
+          Packets 2+: craft_packet(LOADER, raw_chunk)  max 4096 bytes each
+
+        Sets _load_in_progress so the next response on stream 0 is treated
+        as a load result rather than a command response.
+
+        Returns False if the .so file is not found.
+        """
+        packets = mod.build_load_packets(module_name)
+        if packets is None:
+            _push_event(
+                {
+                    "type": "log",
+                    "level": "error",
+                    "msg": f"Module file not found: ./modules/{module_name}.so",
+                }
+            )
+            return False
+
+        self._load_in_progress = True
+        self._load_module_name = module_name
+        self._load_pending_cmd = pending_cmd
+
+        for payload in packets:
+            packet = craft_packet(mod.LOADER, payload)
+            self._quic.send_stream_data(stream_id=0, data=packet)
+
+        self.transmit()
+        _push_event(
+            {
+                "type": "log",
+                "level": "info",
+                "msg": f"Loading module '{module_name}' — {len(packets) - 1} chunk(s) sent",
+            }
+        )
+        return True
+
     def set_alias(self, alias: str) -> None:
         self.alias = alias.strip() or None
         _push_event(
@@ -145,7 +184,7 @@ class SozoServerProtocol(QuicConnectionProtocol):
             }
         )
 
-    # ── QUIC events ──────────────────────────────────────────────────────────
+    # ── QUIC events ───────────────────────────────────────────────────────────
 
     def quic_event_received(self, event: QuicEvent) -> None:
         if isinstance(event, HandshakeCompleted):
@@ -183,7 +222,7 @@ class SozoServerProtocol(QuicConnectionProtocol):
                 }
             )
 
-    # ── Stream data handling ─────────────────────────────────────────────────
+    # ── Stream data handling ──────────────────────────────────────────────────
 
     def _handle_stream_data(self, stream_id: int, raw: bytes) -> None:
         self._stream_buf[stream_id] = self._stream_buf.get(stream_id, b"") + raw
@@ -208,7 +247,7 @@ class SozoServerProtocol(QuicConnectionProtocol):
         self._stream_buf[stream_id] = buf[offset:]
 
     def _handle_inner(self, stream_id: int, module_identity: int, inner: bytes) -> None:
-        # ── Check-in detection ───────────────────────────────────────────────
+        # ── Check-in ──────────────────────────────────────────────────────────
         if module_identity == mod.SHELL and not self._checkin_received:
             self._checkin_received = True
             decoded = mod._decode_checkin(inner)
@@ -224,17 +263,21 @@ class SozoServerProtocol(QuicConnectionProtocol):
             )
             return
 
-        # ── Chunk reassembly — context-driven parsing ────────────────────────
-        # Use the presence of an existing ChunkBuffer to decide format:
-        #   no buffer  → this must be an initial chunk
-        #   buffer exists → this must be a continuation chunk
-        # This is the only reliable disambiguation since both initial and
-        # continuation inner payloads can be large, and reading header fields
-        # at wrong offsets produces garbage (as we observed in debug output).
+        # ── Load response ─────────────────────────────────────────────────────
+        # The load response routes back with SHELL identity — all agent output
+        # goes through the shell module so we cannot key on module_identity.
+        # _load_in_progress is the sole discriminator. It is safe because Shell
+        # is a sync single-stream module — when _load_in_progress is True, the
+        # busy lock guarantees no other command is in-flight, so the next
+        # response on stream 0 is always the load result.
+        if self._load_in_progress:
+            self._handle_load_response(inner)
+            return
+
+        # ── Normal chunk reassembly ───────────────────────────────────────────
         existing_buf = self._chunks.get(stream_id)
 
         if existing_buf is None:
-            # ── Initial chunk ────────────────────────────────────────────────
             result = mod.parse_initial_chunk(inner)
             if result is None:
                 _push_event(
@@ -253,13 +296,11 @@ class SozoServerProtocol(QuicConnectionProtocol):
             )
             buf.chunks[0] = chunk_data
             if buf.complete:
-                # Single-chunk response — decode immediately, no need to store
                 self._finalize(stream_id, module_identity, buf)
             else:
                 self._chunks[stream_id] = buf
             return
 
-        # ── Continuation chunk ───────────────────────────────────────────────
         result = mod.parse_continuation_chunk(inner)
         if result is None:
             _push_event(
@@ -276,11 +317,57 @@ class SozoServerProtocol(QuicConnectionProtocol):
             del self._chunks[stream_id]
             self._finalize(stream_id, module_identity, existing_buf)
 
+    def _handle_load_response(self, inner: bytes) -> None:
+        """
+        Parse the 5-byte loader response and push a load_result event.
+        If successful, register the dynamic module and push the pending
+        command so bridge.py can automatically retry it.
+        """
+        module_name = self._load_module_name
+        pending_cmd = self._load_pending_cmd
+
+        self._load_in_progress = False
+        self._load_module_name = None
+        self._load_pending_cmd = None
+
+        retcode, identity = mod.parse_load_response(inner)
+        retcode_name = mod.LOAD_ERRORS.get(retcode, f"0x{retcode:02X}")
+
+        if retcode != 0:
+            _push_event(
+                {
+                    "type": "load_result",
+                    "id": hex(self.conn_identity) if self.conn_identity else "unknown",
+                    "module_name": module_name,
+                    "success": False,
+                    "error": retcode_name,
+                    "identity": None,
+                }
+            )
+            return
+
+        # Register the module so future commands resolve correctly
+        mod.register_loaded_module(module_name, identity)
+
+        _push_event(
+            {
+                "type": "load_result",
+                "id": hex(self.conn_identity) if self.conn_identity else "unknown",
+                "module_name": module_name,
+                "success": True,
+                "error": None,
+                "identity": hex(identity),
+                "pending_cmd": pending_cmd,  # bridge retries this automatically
+            }
+        )
+
     def _finalize(
         self, stream_id: int, module_identity: int, buf: "mod.ChunkBuffer"
     ) -> None:
         """Decode a completed ChunkBuffer and push the recv event."""
-        retcode_name = mod.SHELL_ERRORS.get(buf.retcode, f"0x{buf.retcode:02X}")
+        opcode = self._stream_opcodes.pop(stream_id, -1)
+        stream_module = self._stream_module.pop(stream_id, module_identity)
+        rc_name = mod.retcode_name(stream_module, buf.retcode)
 
         if buf.retcode != 0:
             _push_event(
@@ -290,14 +377,12 @@ class SozoServerProtocol(QuicConnectionProtocol):
                     "addr": self.peer_addr,
                     "alias": self.alias,
                     "module": hex(module_identity),
-                    "error": retcode_name,
+                    "error": rc_name,
                     "data": None,
                 }
             )
             return
 
-        opcode = self._stream_opcodes.pop(stream_id, -1)
-        stream_module = self._stream_module.pop(stream_id, module_identity)
         decoded = mod.decode_response(stream_module, opcode, buf.data)
 
         _push_event(
@@ -307,7 +392,7 @@ class SozoServerProtocol(QuicConnectionProtocol):
                 "addr": self.peer_addr,
                 "alias": self.alias,
                 "module": hex(module_identity),
-                "retcode": retcode_name,
+                "retcode": rc_name,
                 "data": decoded,
             }
         )
