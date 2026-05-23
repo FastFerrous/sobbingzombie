@@ -1,4 +1,4 @@
-use crate::FileOpsErrors;
+use crate::{FileOpsErrors, MAX_PATH_LEN};
 use std::fs::File;
 use std::io::{ErrorKind, Read};
 use std::os::unix::fs::MetadataExt;
@@ -54,8 +54,10 @@ pub fn read_file_contents(args: &[u8]) -> Result<Vec<u8>, FileOpsErrors> {
 }
 
 fn parse_args(args: &[u8]) -> Option<String> {
-    const MAX_PATH_LEN: usize = 512;
-
+    /*
+     * u16: path length
+     * <len>: path
+     */
     if args.len() < size_of::<u16>() {
         return None;
     }

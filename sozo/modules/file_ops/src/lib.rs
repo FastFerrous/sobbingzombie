@@ -4,6 +4,15 @@ use std::ffi::c_void;
 use std::sync::Mutex;
 use std::sync::mpsc::{Receiver, SyncSender, sync_channel};
 mod cat;
+mod copy;
+
+const MAX_PATH_LEN: usize = 512;
+
+/* Used by `copy` and `move` operations */
+pub struct PathArgs {
+    pub src: String,
+    pub dst: String,
+}
 
 #[repr(u8)]
 #[derive(Copy, Clone, Debug)]
@@ -209,7 +218,7 @@ unsafe extern "C" fn plugin_run(instance: *mut c_void, host_vtable: *const HostV
 
                 let result = match opcode {
                     FileOpsCommands::Cat => cat::read_file_contents(&msg[size_of::<u8>()..]),
-                    FileOpsCommands::Copy => cat::read_file_contents(&msg[size_of::<u8>()..]),
+                    FileOpsCommands::Copy => copy::copy_file(&msg[size_of::<u8>()..]),
                     FileOpsCommands::Remove => cat::read_file_contents(&msg[size_of::<u8>()..]),
                     FileOpsCommands::Move => cat::read_file_contents(&msg[size_of::<u8>()..]),
                 };
@@ -268,3 +277,7 @@ pub unsafe extern "C" fn module_entry() -> *const ModuleVTable {
 }
 
 // Once we move maximum size into the sozo api, modify this accordingly
+
+// mv is essentially a rename operation where an old name is unlinked and new name is linked to that same inode
+// if file already exists, that file is then removed since the source now has that name and linkage to inode?
+// if cross sytem, we call copy operation and the unlink the source?
