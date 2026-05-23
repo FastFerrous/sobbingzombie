@@ -1,5 +1,4 @@
 use crate::FileOpsErrors;
-use sozo_api::sozo_debug;
 use std::fs::File;
 use std::io::{ErrorKind, Read};
 use std::os::unix::fs::MetadataExt;
@@ -26,23 +25,30 @@ pub fn read_file_contents(args: &[u8]) -> Result<Vec<u8>, FileOpsErrors> {
         return Err(FileOpsErrors::NotRegularFile);
     }
 
+    let file_size = match metadata.size() {
+        0u64 => u16::MAX as u64,
+        _ => metadata.size(),
+    };
+
     let mut buffer: Vec<u8> = Vec::new();
     if buffer
-        .try_reserve(size_of::<u64>() + metadata.size() as usize)
+        .try_reserve(size_of::<u64>() + file_size as usize)
         .is_err()
     {
         return Err(FileOpsErrors::Critical);
     }
 
-    buffer.extend_from_slice(&(metadata.size() as u64).to_be_bytes());
+    buffer.extend_from_slice(&0u64.to_be_bytes());
 
     let Ok(bytes_read) = file.read_to_end(&mut buffer) else {
         return Err(FileOpsErrors::ReadError);
     };
 
-    if bytes_read != metadata.size() as usize {
+    if metadata.size() > 0 && bytes_read != metadata.size() as usize {
         return Err(FileOpsErrors::ReadError);
-    }
+    };
+
+    buffer[..size_of::<u64>()].copy_from_slice(&(bytes_read as u64).to_be_bytes());
 
     Ok(buffer)
 }
@@ -50,16 +56,16 @@ pub fn read_file_contents(args: &[u8]) -> Result<Vec<u8>, FileOpsErrors> {
 fn parse_args(args: &[u8]) -> Option<String> {
     const MAX_PATH_LEN: usize = 512;
 
-    if args.len() < size_of::<u32>() {
+    if args.len() < size_of::<u16>() {
         return None;
     }
 
-    let path_len = u32::from_be_bytes(args[..size_of::<u32>()].try_into().ok()?) as usize;
-    if size_of::<u32>() + path_len != args.len() || path_len > MAX_PATH_LEN {
+    let path_len = u16::from_be_bytes(args[..size_of::<u16>()].try_into().ok()?) as usize;
+    if size_of::<u16>() + path_len != args.len() || path_len > MAX_PATH_LEN {
         return None;
     }
 
-    let path_slice = &args[size_of::<u32>()..size_of::<u32>() + path_len];
+    let path_slice = &args[size_of::<u16>()..size_of::<u16>() + path_len];
     let mut path: Vec<u8> = Vec::new();
     if path.try_reserve(path_slice.len()).is_err() {
         return None;
