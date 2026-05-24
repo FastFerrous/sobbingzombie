@@ -7,6 +7,7 @@ edition = "2024"
 crate-type = ["cdylib"]
 
 [dependencies]
+rustix = { version = "1.1.4", features = ["fs"] }
 sozo_api = { workspace = true }
 tokio = { version = "1.52.3", features = ["rt", "rt-multi-thread", "macros"] }
 tokio-util = { version = "0.7.18", features = ["rt"] }

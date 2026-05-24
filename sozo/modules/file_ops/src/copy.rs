@@ -19,45 +19,6 @@ pub fn copy_file(args: &[u8]) -> Result<Vec<u8>, FileOpsErrors> {
     Ok(Vec::new())
 }
 
-fn get_file_contents(path: &String) -> Result<Vec<u8>, FileOpsErrors> {
-    let mut file = match File::open(&path) {
-        Ok(file) => file,
-        Err(e) => match e.kind() {
-            ErrorKind::NotFound => return Err(FileOpsErrors::PathNotFound),
-            ErrorKind::PermissionDenied => return Err(FileOpsErrors::PermissionDenied),
-            _ => return Err(FileOpsErrors::Unknown),
-        },
-    };
-
-    let Ok(metadata) = file.metadata() else {
-        return Err(FileOpsErrors::UnableToEnumerate);
-    };
-
-    if !metadata.is_file() {
-        return Err(FileOpsErrors::NotRegularFile);
-    }
-
-    let file_size = match metadata.size() {
-        0u64 => u16::MAX as u64,
-        _ => metadata.size(),
-    };
-
-    let mut file_data: Vec<u8> = Vec::new();
-    if file_data.try_reserve(file_size as usize).is_err() {
-        return Err(FileOpsErrors::Critical);
-    }
-
-    let Ok(bytes_read) = file.read_to_end(&mut file_data) else {
-        return Err(FileOpsErrors::ReadError);
-    };
-
-    if metadata.size() > 0 && bytes_read != metadata.size() as usize {
-        return Err(FileOpsErrors::ReadError);
-    };
-
-    Ok(file_data)
-}
-
 fn parse_args(args: &[u8]) -> Option<PathArgs> {
     /*
      * u16: source path len
@@ -106,4 +67,43 @@ fn parse_args(args: &[u8]) -> Option<PathArgs> {
         src: String::from_utf8(source).ok()?,
         dst: String::from_utf8(destination).ok()?,
     })
+}
+
+fn get_file_contents(path: &String) -> Result<Vec<u8>, FileOpsErrors> {
+    let mut file = match File::open(&path) {
+        Ok(file) => file,
+        Err(e) => match e.kind() {
+            ErrorKind::NotFound => return Err(FileOpsErrors::PathNotFound),
+            ErrorKind::PermissionDenied => return Err(FileOpsErrors::PermissionDenied),
+            _ => return Err(FileOpsErrors::Unknown),
+        },
+    };
+
+    let Ok(metadata) = file.metadata() else {
+        return Err(FileOpsErrors::UnableToEnumerate);
+    };
+
+    if !metadata.is_file() {
+        return Err(FileOpsErrors::NotRegularFile);
+    }
+
+    let file_size = match metadata.size() {
+        0u64 => u16::MAX as u64,
+        _ => metadata.size(),
+    };
+
+    let mut file_data: Vec<u8> = Vec::new();
+    if file_data.try_reserve(file_size as usize).is_err() {
+        return Err(FileOpsErrors::Critical);
+    }
+
+    let Ok(bytes_read) = file.read_to_end(&mut file_data) else {
+        return Err(FileOpsErrors::ReadError);
+    };
+
+    if metadata.size() > 0 && bytes_read != metadata.size() as usize {
+        return Err(FileOpsErrors::ReadError);
+    };
+
+    Ok(file_data)
 }

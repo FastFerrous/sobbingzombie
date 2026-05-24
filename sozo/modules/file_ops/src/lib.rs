@@ -1,10 +1,12 @@
 use sozo_api::plugin::{HostVTable, ModuleVTable, PollStatus};
 use sozo_api::{ModuleIdentity, sozo_debug};
 use std::ffi::c_void;
+use std::io;
 use std::sync::Mutex;
 use std::sync::mpsc::{Receiver, SyncSender, sync_channel};
 mod cat;
 mod copy;
+mod remove;
 
 const MAX_PATH_LEN: usize = 512;
 
@@ -29,6 +31,16 @@ pub enum FileOpsErrors {
     Unknown,
 }
 
+impl From<io::Error> for FileOpsErrors {
+    fn from(e: io::Error) -> Self {
+        match e.kind() {
+            io::ErrorKind::NotFound => FileOpsErrors::PathNotFound,
+            io::ErrorKind::PermissionDenied => FileOpsErrors::PermissionDenied,
+            _ => FileOpsErrors::Unknown,
+        }
+    }
+}
+
 #[repr(u8)]
 #[derive(Copy, Clone, PartialEq, Eq)]
 enum FileOpsCommands {
@@ -36,6 +48,7 @@ enum FileOpsCommands {
     Copy,
     Remove,
     Move,
+    Stat,
 }
 
 impl TryFrom<u8> for FileOpsCommands {
@@ -219,8 +232,9 @@ unsafe extern "C" fn plugin_run(instance: *mut c_void, host_vtable: *const HostV
                 let result = match opcode {
                     FileOpsCommands::Cat => cat::read_file_contents(&msg[size_of::<u8>()..]),
                     FileOpsCommands::Copy => copy::copy_file(&msg[size_of::<u8>()..]),
-                    FileOpsCommands::Remove => cat::read_file_contents(&msg[size_of::<u8>()..]),
+                    FileOpsCommands::Remove => remove::remove_path(&msg[size_of::<u8>()..]),
                     FileOpsCommands::Move => cat::read_file_contents(&msg[size_of::<u8>()..]),
+                    FileOpsCommands::Stat => remove::remove_path(&msg[size_of::<u8>()..]),
                 };
 
                 match result {
@@ -277,7 +291,8 @@ pub unsafe extern "C" fn module_entry() -> *const ModuleVTable {
 }
 
 // Once we move maximum size into the sozo api, modify this accordingly
+// try to cat a directory and/or copy to/from dir -- check errors may need to be more granular rather than unknown
 
 // mv is essentially a rename operation where an old name is unlinked and new name is linked to that same inode
 // if file already exists, that file is then removed since the source now has that name and linkage to inode?
-// if cross sytem, we call copy operation and the unlink the source?
+// if cross sytem, we call copy operation and the unlink the source or just return the error
