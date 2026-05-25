@@ -292,7 +292,8 @@ pub unsafe extern "C" fn module_entry() -> *const ModuleVTable {
 
 // Once we move maximum size into the sozo api, modify this accordingly
 // try to cat a directory and/or copy to/from dir -- check errors may need to be more granular rather than unknown
+// test rm functinality -- should return immediately on any errors
 
 // mv is essentially a rename operation where an old name is unlinked and new name is linked to that same inode
-// if file already exists, that file is then removed since the source now has that name and linkage to inode?
+// if file already exists, the previous file will be unlinked via o_trunc basically
 // if cross sytem, we call copy operation and the unlink the source or just return the error

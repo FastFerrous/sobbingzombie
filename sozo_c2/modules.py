@@ -111,6 +111,19 @@ def _fileops_payload(opcode: int, args: str) -> bytes:
     return bytes([opcode]) + struct.pack(">H", len(path)) + path
 
 
+def _remove_payload(args: str) -> bytes:
+    """
+    Remove payload: u8 opcode + u8 dir_flag + u16 path_len + path bytes.
+    User passes --dir flag to remove a directory, e.g. "remove --dir /tmp/foo".
+    dir_flag is 1 if --dir present, 0 otherwise.
+    """
+    parts = args.strip().split()
+    is_dir = 1 if "--dir" in parts else 0
+    parts = [p for p in parts if p != "--dir"]
+    path = (" ".join(parts)).encode("utf-8")
+    return bytes([FILEOPS_OP_REMOVE, is_dir]) + struct.pack(">H", len(path)) + path
+
+
 def _fileops_two_path_payload(opcode: int, args: str) -> bytes:
     """
     opcode(u8) + src_len(u16) + dst_len(u16) + src bytes + dst bytes.
@@ -143,10 +156,7 @@ def register_loaded_module(module_name: str, identity: int) -> None:
             identity,
             lambda args: _fileops_two_path_payload(FILEOPS_OP_COPY, args),
         )
-        COMMAND_MAP["remove"] = (
-            identity,
-            lambda args: _fileops_payload(FILEOPS_OP_REMOVE, args),
-        )
+        COMMAND_MAP["remove"] = (identity, lambda args: _remove_payload(args))
         COMMAND_MAP["move"] = (
             identity,
             lambda args: _fileops_two_path_payload(FILEOPS_OP_MOVE, args),
@@ -537,9 +547,9 @@ def _decode_fileops_status(data: bytes) -> dict:
         "cmd": "fileops",
         "retcode": retcode,
         "success": retcode == 0,
-        "error": None
-        if retcode == 0
-        else FILEOPS_ERRORS.get(retcode, f"0x{retcode:02X}"),
+        "error": (
+            None if retcode == 0 else FILEOPS_ERRORS.get(retcode, f"0x{retcode:02X}")
+        ),
     }
 
 
