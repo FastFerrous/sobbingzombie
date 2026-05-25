@@ -1,9 +1,14 @@
-use crate::{FileOpsErrors, MAX_PATH_LEN, PathArgs};
-use rustix::fs::{CWD, RenameFlags, renameat, renameat_with};
-use std::fmt::Error;
-use std::fs::File;
+use crate::{FileOpsErrors, MAX_PATH_LEN};
+use rustix::fs::{CWD, RenameFlags, renameat_with};
+use std::fs::{self, File};
+use std::io;
 use std::io::{ErrorKind, Read};
 use std::os::unix::fs::MetadataExt;
+
+struct PathArgs {
+    src: String,
+    dst: String,
+}
 
 pub fn copy_file(args: &[u8]) -> Result<Vec<u8>, FileOpsErrors> {
     let Some(args) = parse_args(args) else {
@@ -26,10 +31,8 @@ pub fn move_file(args: &[u8]) -> Result<Vec<u8>, FileOpsErrors> {
         return Err(FileOpsErrors::InvalidArguments);
     };
 
-    // validate that source path exists prior to init renameat
-
     /*
-     * call initial renameat to determine whether destination file exists, cross filesystem move, etc.
+     * call initial `renameat`` to determine whether destination file exists, cross filesystem move, etc.
      * using noreplace to prevent destination clobbering; however, if successful then operation is complete
      */
     match renameat_with(CWD, &args.src, CWD, &args.dst, RenameFlags::NOREPLACE) {
@@ -38,8 +41,8 @@ pub fn move_file(args: &[u8]) -> Result<Vec<u8>, FileOpsErrors> {
             ErrorKind::NotFound => return Err(FileOpsErrors::PathNotFound),
             ErrorKind::PermissionDenied => return Err(FileOpsErrors::PermissionDenied),
             ErrorKind::IsADirectory => return Err(FileOpsErrors::NotRegularFile),
-            ErrorKind::AlreadyExists => {} // we now know the file exists
-            ErrorKind::CrossesDevices => {} // crosses devices
+            ErrorKind::AlreadyExists => handle_eexist_error(&args)?,
+            ErrorKind::CrossesDevices => handle_exdev_error(&args)?,
             _ => return Err(FileOpsErrors::Unknown),
         },
     }
@@ -59,7 +62,8 @@ fn parse_args(args: &[u8]) -> Option<PathArgs> {
     }
 
     let mut index: usize = 0;
-    let spath_len = u16::from_be_bytes(args[index..size_of::<u16>()].try_into().ok()?) as usize;
+    let spath_len =
+        u16::from_be_bytes(args[index..index + size_of::<u16>()].try_into().ok()?) as usize;
     index += size_of::<u16>();
 
     let dpath_len =
@@ -136,7 +140,28 @@ fn get_file_contents(path: &String) -> Result<Vec<u8>, FileOpsErrors> {
     Ok(file_data)
 }
 
+fn handle_eexist_error(args: &PathArgs) -> Result<(), FileOpsErrors> {
+    let metadata = fs::symlink_metadata(&args.dst).map_err(|_| FileOpsErrors::UnableToEnumerate)?;
+    if metadata.is_dir() {
+        return Err(FileOpsErrors::NotRegularFile);
+    }
+
+    renameat_with(CWD, &args.src, CWD, &args.dst, RenameFlags::empty())
+        .map(|_| Ok(()))
+        .map_err(io::Error::from)?
+}
+
+fn handle_exdev_error(args: &PathArgs) -> Result<(), FileOpsErrors> {
+    // copy behavior
+    // update all metadata from the src file
+    Ok(())
+}
+
+// move /dev/shm /dev/shm/apples2 worked -- fix this
+// same as inverse as above -- need to check for directories it seems
+
 /*
+
 
 // same fs
 ioctl(0, TCGETS2, {c_iflag=ICRNL|IXON|IUTF8, c_oflag=NL0|CR0|TAB0|BS0|VT0|FF0|OPOST|ONLCR, c_cflag=B38400|CS8|CREAD, c_lflag=ISIG|ICANON|ECHO|ECHOE|ECHOK|IEXTEN|ECHOCTL|ECHOKE, ...}) = 0

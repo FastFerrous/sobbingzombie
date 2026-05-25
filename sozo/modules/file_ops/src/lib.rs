@@ -10,12 +10,6 @@ mod remove;
 
 const MAX_PATH_LEN: usize = 512;
 
-/* Used by `copy` and `move` operations */
-pub struct PathArgs {
-    pub src: String,
-    pub dst: String,
-}
-
 #[repr(u8)]
 #[derive(Copy, Clone, Debug)]
 pub enum FileOpsErrors {
@@ -233,7 +227,7 @@ unsafe extern "C" fn plugin_run(instance: *mut c_void, host_vtable: *const HostV
                     FileOpsCommands::Cat => cat::read_file_contents(&msg[size_of::<u8>()..]),
                     FileOpsCommands::Copy => copy_and_move::copy_file(&msg[size_of::<u8>()..]),
                     FileOpsCommands::Remove => remove::remove_path(&msg[size_of::<u8>()..]),
-                    FileOpsCommands::Move => cat::read_file_contents(&msg[size_of::<u8>()..]),
+                    FileOpsCommands::Move => copy_and_move::move_file(&msg[size_of::<u8>()..]),
                     FileOpsCommands::Stat => remove::remove_path(&msg[size_of::<u8>()..]),
                 };
 
@@ -295,6 +289,4 @@ pub unsafe extern "C" fn module_entry() -> *const ModuleVTable {
 // test rm functinality -- should return immediately on any errors
 // basically do some tests, etc
 
-// mv is essentially a rename operation where an old name is unlinked and new name is linked to that same inode
-// if file already exists, the previous file will be unlinked via o_trunc basically
-// if cross sytem, we call copy operation and the unlink the source or just return the error
+// using impl for io error -- update all commands and rustix commands to map to that for ease rather than mutliple large match statements
