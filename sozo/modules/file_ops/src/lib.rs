@@ -22,6 +22,7 @@ pub enum FileOpsErrors {
     NotRegularFile,
     UnableToOpenFile,
     UnableToEnumerate,
+    UnableToRemove,
     Unknown,
 }
 
@@ -287,6 +288,6 @@ pub unsafe extern "C" fn module_entry() -> *const ModuleVTable {
 // Once we move maximum size into the sozo api, modify this accordingly
 // try to cat a directory and/or copy to/from dir -- check errors may need to be more granular rather than unknown
 // test rm functinality -- should return immediately on any errors
-// basically do some tests, etc
+// test mv, etc.
 
 // using impl for io error -- update all commands and rustix commands to map to that for ease rather than mutliple large match statements

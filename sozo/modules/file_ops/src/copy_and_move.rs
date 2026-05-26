@@ -1,8 +1,10 @@
 use crate::{FileOpsErrors, MAX_PATH_LEN};
-use rustix::fs::{CWD, RenameFlags, renameat_with};
-use std::fs::{self, File};
-use std::io;
-use std::io::{ErrorKind, Read};
+use rustix::fs::{
+    AtFlags, CWD, Gid, Mode, RenameFlags, Timespec, Timestamps, Uid, chmodat, chownat,
+    renameat_with, unlink, utimensat,
+};
+use std::fs::{File, Metadata, symlink_metadata};
+use std::io::{Error, ErrorKind, Read};
 use std::os::unix::fs::MetadataExt;
 
 struct PathArgs {
@@ -31,6 +33,11 @@ pub fn move_file(args: &[u8]) -> Result<Vec<u8>, FileOpsErrors> {
         return Err(FileOpsErrors::InvalidArguments);
     };
 
+    let metadata = symlink_metadata(&args.src).map_err(Error::from)?;
+    if !metadata.is_file() {
+        return Err(FileOpsErrors::NotRegularFile);
+    }
+
     /*
      * call initial `renameat`` to determine whether destination file exists, cross filesystem move, etc.
      * using noreplace to prevent destination clobbering; however, if successful then operation is complete
@@ -42,7 +49,7 @@ pub fn move_file(args: &[u8]) -> Result<Vec<u8>, FileOpsErrors> {
             ErrorKind::PermissionDenied => return Err(FileOpsErrors::PermissionDenied),
             ErrorKind::IsADirectory => return Err(FileOpsErrors::NotRegularFile),
             ErrorKind::AlreadyExists => handle_eexist_error(&args)?,
-            ErrorKind::CrossesDevices => handle_exdev_error(&args)?,
+            ErrorKind::CrossesDevices => handle_exdev_error(&args, metadata)?,
             _ => return Err(FileOpsErrors::Unknown),
         },
     }
@@ -142,23 +149,86 @@ fn get_file_contents(path: &String) -> Result<Vec<u8>, FileOpsErrors> {
 
 fn handle_eexist_error(args: &PathArgs) -> Result<(), FileOpsErrors> {
     let metadata = fs::symlink_metadata(&args.dst).map_err(|_| FileOpsErrors::UnableToEnumerate)?;
-    if metadata.is_dir() {
+    if !metadata.is_file() {
         return Err(FileOpsErrors::NotRegularFile);
     }
 
     renameat_with(CWD, &args.src, CWD, &args.dst, RenameFlags::empty())
         .map(|_| Ok(()))
-        .map_err(io::Error::from)?
+        .map_err(Error::from)?
 }
 
-fn handle_exdev_error(args: &PathArgs) -> Result<(), FileOpsErrors> {
-    // copy behavior
-    // update all metadata from the src file
+fn handle_exdev_error(args: &PathArgs, src_metadata: Metadata) -> Result<(), FileOpsErrors> {
+    /*
+     * falling back to copy operation due to cross file system
+     * checking whether destination file exists and if so, whether it is a non regular file
+     */
+    match symlink_metadata(&args.dst) {
+        Ok(metadata) => {
+            if !metadata.is_file() {
+                return Err(FileOpsErrors::NotRegularFile);
+            }
+        }
+        Err(err) if err.kind() == ErrorKind::NotFound => {}
+        Err(_) => return Err(FileOpsErrors::UnableToEnumerate),
+    };
+
+    let src_data = get_file_contents(&args.src)?;
+
+    let timestamps: Timestamps = Timestamps {
+        last_access: Timespec {
+            tv_sec: src_metadata.atime() as _,
+            tv_nsec: src_metadata.atime_nsec() as _,
+        },
+        last_modification: Timespec {
+            tv_sec: src_metadata.mtime() as _,
+            tv_nsec: src_metadata.mtime_nsec() as _,
+        },
+    };
+
+    utimensat(CWD, &args.dst, &timestamps, AtFlags::empty()).map_err(|_| FileOpsErrors::Unknown)?; // placeholder return 
+    chownat(
+        CWD,
+        &args.dst,
+        Some(Uid::from_raw(src_metadata.uid())),
+        Some(Gid::from_raw(src_metadata.gid())),
+        AtFlags::empty(),
+    );
+
+    if chmodat(
+        CWD,
+        &args.dst,
+        Mode::from_bits_truncate(src_metadata.mode() & 0o7777),
+        AtFlags::empty(),
+    )
+    .is_err()
+    {
+        // place holder return values
+        let _ = unlink(&args.dst);
+        return Err(FileOpsErrors::Unknown);
+    }
+
+    // need to write teh dest first so we can do the dressup of metadata -- need to not use the file opern get data becaues we need to keep it open
+    // and specify perms mirriring kernel of 0600
+
+    // swap to stream based copy io, not entire file buffer read into memory -- same for copy
+    // take out and create sep file due to logic being larger overall, or not. could create stream function and then both use it
+    // ensure src is open with no follow
+
+    // consider cleanup as well -- if we error at all, we want to ensure we clean up the dst file. May use a temp file
+
+    // review strace output again
+
+    std::fs::write(&args.dst, src_data).map_err(|e| match e.kind() {
+        ErrorKind::PermissionDenied => FileOpsErrors::PermissionDenied,
+        ErrorKind::NotFound => FileOpsErrors::PathNotFound,
+        _ => FileOpsErrors::Unknown,
+    })?;
+
+    unlink(&args.src).map_err(|_| FileOpsErrors::UnableToRemove)?;
+
     Ok(())
 }
-
-// move /dev/shm /dev/shm/apples2 worked -- fix this
-// same as inverse as above -- need to check for directories it seems
 
 /*
 
