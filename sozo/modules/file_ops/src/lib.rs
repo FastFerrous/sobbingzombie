@@ -5,10 +5,16 @@ use std::io;
 use std::sync::Mutex;
 use std::sync::mpsc::{Receiver, SyncSender, sync_channel};
 mod cat;
-mod copy_and_move;
+mod copy;
+mod mv;
 mod remove;
 
 const MAX_PATH_LEN: usize = 512;
+
+pub struct PathArgs {
+    pub src: String,
+    pub dst: String,
+}
 
 #[repr(u8)]
 #[derive(Copy, Clone, Debug)]
@@ -19,6 +25,7 @@ pub enum FileOpsErrors {
     InvalidArguments,
     PathNotFound,
     ReadError,
+    WriteError,
     NotRegularFile,
     UnableToOpenFile,
     UnableToEnumerate,
@@ -226,9 +233,9 @@ unsafe extern "C" fn plugin_run(instance: *mut c_void, host_vtable: *const HostV
 
                 let result = match opcode {
                     FileOpsCommands::Cat => cat::read_file_contents(&msg[size_of::<u8>()..]),
-                    FileOpsCommands::Copy => copy_and_move::copy_file(&msg[size_of::<u8>()..]),
+                    FileOpsCommands::Copy => copy::copy_file(&msg[size_of::<u8>()..]),
                     FileOpsCommands::Remove => remove::remove_path(&msg[size_of::<u8>()..]),
-                    FileOpsCommands::Move => copy_and_move::move_file(&msg[size_of::<u8>()..]),
+                    FileOpsCommands::Move => mv::move_file(&msg[size_of::<u8>()..]),
                     FileOpsCommands::Stat => remove::remove_path(&msg[size_of::<u8>()..]),
                 };
 
