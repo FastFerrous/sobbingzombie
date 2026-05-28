@@ -1,12 +1,12 @@
 use crate::{FileOpsErrors, MAX_PATH_LEN, PathArgs};
 use rustix::fs::{
-    AtFlags, CWD, Gid, Mode, OFlags, RenameFlags, Timespec, Timestamps, Uid, fchmod, fchown, fsync,
-    futimens, openat, renameat_with, unlinkat,
+    AtFlags, CWD, Gid, Mode, OFlags, RenameFlags, Timespec, Timestamps, Uid, fchmod, fchown, fstat,
+    fsync, futimens, openat, renameat_with, unlinkat,
 };
 use rustix::io::{Errno, read, write};
 use std::fs::{Metadata, symlink_metadata};
 use std::io::{Error, ErrorKind};
-use std::os::unix::fs::MetadataExt;
+use std::os::fd::OwnedFd;
 
 pub fn move_file(args: &[u8]) -> Result<Vec<u8>, FileOpsErrors> {
     let Some(args) = parse_args(args) else {
@@ -30,7 +30,7 @@ pub fn move_file(args: &[u8]) -> Result<Vec<u8>, FileOpsErrors> {
             ErrorKind::PermissionDenied => return Err(FileOpsErrors::PermissionDenied),
             ErrorKind::IsADirectory => return Err(FileOpsErrors::NotRegularFile),
             ErrorKind::AlreadyExists => handle_eexist_error(&args)?,
-            ErrorKind::CrossesDevices => handle_exdev_error(&args, source_metadata)?,
+            ErrorKind::CrossesDevices => handle_exdev_error(&args)?,
             _ => return Err(FileOpsErrors::Unknown),
         },
     }
@@ -101,7 +101,7 @@ fn handle_eexist_error(args: &PathArgs) -> Result<(), FileOpsErrors> {
         .map_err(Error::from)?
 }
 
-fn handle_exdev_error(args: &PathArgs, source_metadata: Metadata) -> Result<(), FileOpsErrors> {
+fn handle_exdev_error(args: &PathArgs) -> Result<(), FileOpsErrors> {
     /*
      * falling back to copy operation due destination file crossing file systems
      * checking whether destination file exists and if so, whether it is a non regular file
@@ -139,17 +139,25 @@ fn handle_exdev_error(args: &PathArgs, source_metadata: Metadata) -> Result<(), 
     )
     .map_err(Error::from)?;
 
-    // copy file contents function that performs the below io
+    buffered_io_copy(&src_fd, &dst_fd)?;
+
+    copy_metadata(&src_fd, &dst_fd)?;
+
+    unlinkat(CWD, &args.src, AtFlags::empty()).map_err(|_| FileOpsErrors::UnableToRemove)
+}
+
+fn buffered_io_copy(src: &OwnedFd, dst: &OwnedFd) -> Result<(), FileOpsErrors> {
+    const READ_BUFFER_SIZE: usize = 64 * 1024;
 
     let mut buf: Vec<u8> = Vec::new();
-    if buf.try_reserve(128 * 1024).is_err() {
+    if buf.try_reserve(READ_BUFFER_SIZE).is_err() {
         return Err(FileOpsErrors::Critical);
     }
 
-    buf.resize(128 * 1024, 0);
+    buf.resize(READ_BUFFER_SIZE, 0);
 
     loop {
-        let bytes_read = match read(&src_fd, &mut buf) {
+        let bytes_read = match read(src, &mut buf) {
             Ok(0) => break,
             Ok(bytes_read) => bytes_read,
             Err(Errno::INTR) => continue,
@@ -158,7 +166,7 @@ fn handle_exdev_error(args: &PathArgs, source_metadata: Metadata) -> Result<(), 
 
         let mut bytes_written: usize = 0 as usize;
         while bytes_written < bytes_read {
-            match write(&dst_fd, &buf[bytes_written..bytes_read]) {
+            match write(dst, &buf[bytes_written..bytes_read]) {
                 Ok(wrote) => bytes_written += wrote,
                 Err(Errno::INTR) => continue,
                 Err(_) => return Err(FileOpsErrors::WriteError),
@@ -166,41 +174,37 @@ fn handle_exdev_error(args: &PathArgs, source_metadata: Metadata) -> Result<(), 
         }
     }
 
-    // copy metadata function -- takes in the dst file descriptor and source metadata
+    Ok(())
+}
+
+fn copy_metadata(src: &OwnedFd, dst: &OwnedFd) -> Result<(), FileOpsErrors> {
+    let Ok(metadata) = fstat(src) else {
+        return Err(FileOpsErrors::UnableToEnumerate);
+    };
+
     let timestamps: Timestamps = Timestamps {
         last_access: Timespec {
-            tv_sec: source_metadata.atime() as _,
-            tv_nsec: source_metadata.atime_nsec() as _,
+            tv_sec: metadata.st_atime as _,
+            tv_nsec: metadata.st_atime_nsec as _,
         },
         last_modification: Timespec {
-            tv_sec: source_metadata.mtime() as _,
-            tv_nsec: source_metadata.mtime_nsec() as _,
+            tv_sec: metadata.st_mtime as _,
+            tv_nsec: metadata.st_mtime_nsec as _,
         },
     };
 
-    futimens(&dst_fd, &timestamps).map_err(|_| FileOpsErrors::Unknown)?; // return actual value -- placeholder
-    fchmod(
-        &dst_fd,
-        Mode::from_bits_truncate(source_metadata.mode() & 0o7777),
-    )
-    .map_err(|_| FileOpsErrors::Unknown)?;
+    futimens(dst, &timestamps).map_err(|_| FileOpsErrors::UnableToApplyMetadata)?;
+    fchmod(dst, Mode::from_bits_truncate(metadata.st_mode & 0o7777))
+        .map_err(|_| FileOpsErrors::UnableToApplyMetadata)?;
 
     fchown(
-        &dst_fd,
-        Some(Uid::from_raw(source_metadata.uid())),
-        Some(Gid::from_raw(source_metadata.gid())),
+        dst,
+        Some(Uid::from_raw(metadata.st_uid)),
+        Some(Gid::from_raw(metadata.st_gid)),
     )
-    .map_err(|_| FileOpsErrors::Unknown)?;
+    .map_err(|_| FileOpsErrors::UnableToApplyMetadata)?;
 
-    fsync(&dst_fd).map_err(|_| FileOpsErrors::Unknown)?; // temp placeholder retunr vlaue
-    unlinkat(CWD, &args.src, AtFlags::empty()).map_err(|_| FileOpsErrors::UnableToRemove)?;
-    // better cleanup -- possibly use a temporary dest file that then gets overwritten by the renameat to move to new file
-    // can use raii on temp file so its always cleaned and deleted
-    // this will ensure that upon any failure temp file gets deleted and no changes are made to the destination file yet
-
-    // update the vector to use a macro for the size
-
-    // possibly fstatat the src_fd to have a fresh copy
+    fsync(dst).map_err(|_| FileOpsErrors::UnableToApplyMetadata)?;
 
     Ok(())
 }

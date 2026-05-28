@@ -30,6 +30,8 @@ pub enum FileOpsErrors {
     UnableToOpenFile,
     UnableToEnumerate,
     UnableToRemove,
+    UnableToApplyMetadata,
+    FsyncError,
     Unknown,
 }
 
@@ -62,6 +64,7 @@ impl TryFrom<u8> for FileOpsCommands {
             1 => Ok(FileOpsCommands::Copy),
             2 => Ok(FileOpsCommands::Remove),
             3 => Ok(FileOpsCommands::Move),
+            4 => Ok(FileOpsCommands::Stat),
             _ => Err(()),
         }
     }
