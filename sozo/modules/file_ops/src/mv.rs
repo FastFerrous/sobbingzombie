@@ -96,9 +96,9 @@ fn handle_eexist_error(args: &PathArgs) -> Result<(), FileOpsErrors> {
         return Err(FileOpsErrors::NotRegularFile);
     }
 
-    renameat_with(CWD, &args.src, CWD, &args.dst, RenameFlags::empty())
-        .map(|_| Ok(()))
-        .map_err(Error::from)?
+    renameat_with(CWD, &args.src, CWD, &args.dst, RenameFlags::empty()).map_err(Error::from)?;
+
+    Ok(())
 }
 
 fn handle_exdev_error(args: &PathArgs) -> Result<(), FileOpsErrors> {
@@ -164,7 +164,7 @@ fn buffered_io_copy(src: &OwnedFd, dst: &OwnedFd) -> Result<(), FileOpsErrors> {
             Err(_) => return Err(FileOpsErrors::ReadError),
         };
 
-        let mut bytes_written: usize = 0 as usize;
+        let mut bytes_written: usize = 0;
         while bytes_written < bytes_read {
             match write(dst, &buf[bytes_written..bytes_read]) {
                 Ok(wrote) => bytes_written += wrote,
@@ -193,16 +193,17 @@ fn copy_metadata(src: &OwnedFd, dst: &OwnedFd) -> Result<(), FileOpsErrors> {
         },
     };
 
-    futimens(dst, &timestamps).map_err(|_| FileOpsErrors::UnableToApplyMetadata)?;
-    fchmod(dst, Mode::from_bits_truncate(metadata.st_mode & 0o7777))
-        .map_err(|_| FileOpsErrors::UnableToApplyMetadata)?;
-
     fchown(
         dst,
         Some(Uid::from_raw(metadata.st_uid)),
         Some(Gid::from_raw(metadata.st_gid)),
     )
     .map_err(|_| FileOpsErrors::UnableToApplyMetadata)?;
+
+    fchmod(dst, Mode::from_bits_truncate(metadata.st_mode & 0o7777))
+        .map_err(|_| FileOpsErrors::UnableToApplyMetadata)?;
+
+    futimens(dst, &timestamps).map_err(|_| FileOpsErrors::UnableToApplyMetadata)?;
 
     fsync(dst).map_err(|_| FileOpsErrors::UnableToApplyMetadata)?;
 
