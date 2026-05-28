@@ -298,6 +298,9 @@ pub unsafe extern "C" fn module_entry() -> *const ModuleVTable {
 // Once we move maximum size into the sozo api, modify this accordingly
 // using impl for io error -- update all commands and rustix commands to map to that for ease rather than mutliple large match statements
 
+// move also needs to keep and reassign xattrs and acls as well -- native mv preserves these
+// move also needs to honor sparsing, currently sparsed file would become actual ballooned size
+
 // for ls operations -- mode is not reflecting whether we have suid/guid bits set. need to ensure we are handling that on c2
 // future note -- need to track which modules have been loaded for each session. ie fileops may have only been loaded for one but still needs the other
 // now that module is essentially built, fix errors and then add unloading operation
