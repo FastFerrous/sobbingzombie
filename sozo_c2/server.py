@@ -89,6 +89,14 @@ class SozoServerProtocol(QuicConnectionProtocol):
         # Command text to retry automatically after a successful load
         self._load_pending_cmd: str | None = None
 
+        # Per-connection module registries.
+        # Each connection tracks its own loaded modules independently —
+        # a module loaded on connection A is not available on connection B
+        # since they are separate processes on separate hosts.
+        self._loaded_modules: dict[str, int] = {}  # name → dynamic identity
+        self._command_map: dict = {}  # verb → (identity, builder)
+        self._decoders: dict = {}  # identity → {opcode → decoder}
+
     # ── Public API ────────────────────────────────────────────────────────────
 
     def send_command(self, cmd_text: str) -> bool:
@@ -97,7 +105,7 @@ class SozoServerProtocol(QuicConnectionProtocol):
         Returns False if unrecognised (not loadable either — bridge handles
         the load_required case before calling here).
         """
-        result = mod.resolve_command(cmd_text)
+        result = mod.resolve_command(cmd_text, self._command_map)
         if result is None:
             _push_event(
                 {
@@ -169,7 +177,7 @@ class SozoServerProtocol(QuicConnectionProtocol):
             {
                 "type": "log",
                 "level": "info",
-                "msg": f"Loading module '{module_name}' — {len(packets) - 1} chunk(s) sent",
+                "msg": f"Loading module '{module_name}' — {len(packets)-1} chunk(s) sent",
             }
         )
         return True
@@ -346,8 +354,14 @@ class SozoServerProtocol(QuicConnectionProtocol):
             )
             return
 
-        # Register the module so future commands resolve correctly
-        mod.register_loaded_module(module_name, identity)
+        # Register into this connection's own registries — not global
+        mod.register_loaded_module(
+            module_name,
+            identity,
+            self._command_map,
+            self._decoders,
+            self._loaded_modules,
+        )
 
         _push_event(
             {
@@ -367,7 +381,7 @@ class SozoServerProtocol(QuicConnectionProtocol):
         """Decode a completed ChunkBuffer and push the recv event."""
         opcode = self._stream_opcodes.pop(stream_id, -1)
         stream_module = self._stream_module.pop(stream_id, module_identity)
-        rc_name = mod.retcode_name(stream_module, buf.retcode)
+        rc_name = mod.retcode_name(stream_module, buf.retcode, self._loaded_modules)
 
         if buf.retcode != 0:
             _push_event(
@@ -383,7 +397,7 @@ class SozoServerProtocol(QuicConnectionProtocol):
             )
             return
 
-        decoded = mod.decode_response(stream_module, opcode, buf.data)
+        decoded = mod.decode_response(stream_module, opcode, buf.data, self._decoders)
 
         _push_event(
             {

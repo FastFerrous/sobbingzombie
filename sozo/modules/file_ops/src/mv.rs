@@ -1,12 +1,14 @@
 use crate::{FileOpsErrors, MAX_PATH_LEN, PathArgs};
 use rustix::fs::{
-    AtFlags, CWD, Gid, Mode, OFlags, RenameFlags, Timespec, Timestamps, Uid, fchmod, fchown, fstat,
-    fsync, futimens, openat, renameat_with, unlinkat,
+    AtFlags, CWD, Gid, Mode, OFlags, RenameFlags, SeekFrom, Timespec, Timestamps, Uid, fchmod,
+    fchown, fstat, fsync, ftruncate, futimens, openat, renameat_with, seek, unlinkat,
 };
-use rustix::io::{Errno, read, write};
+use rustix::io::{Errno, pread, pwrite};
 use std::fs::{Metadata, symlink_metadata};
 use std::io::{Error, ErrorKind};
 use std::os::fd::OwnedFd;
+
+/* this impl of mv does not preserve xattrs or acls -- can be changed to include these at a later time */
 
 pub fn move_file(args: &[u8]) -> Result<Vec<u8>, FileOpsErrors> {
     let Some(args) = parse_args(args) else {
@@ -149,31 +151,55 @@ fn handle_exdev_error(args: &PathArgs) -> Result<(), FileOpsErrors> {
 fn buffered_io_copy(src: &OwnedFd, dst: &OwnedFd) -> Result<(), FileOpsErrors> {
     const READ_BUFFER_SIZE: usize = 64 * 1024;
 
-    let mut buf: Vec<u8> = Vec::new();
-    if buf.try_reserve(READ_BUFFER_SIZE).is_err() {
+    let mut buffer: Vec<u8> = Vec::new();
+    if buffer.try_reserve(READ_BUFFER_SIZE).is_err() {
         return Err(FileOpsErrors::Critical);
     }
 
-    buf.resize(READ_BUFFER_SIZE, 0);
+    buffer.resize(READ_BUFFER_SIZE, 0);
 
-    loop {
-        let bytes_read = match read(src, &mut buf) {
-            Ok(0) => break,
-            Ok(bytes_read) => bytes_read,
-            Err(Errno::INTR) => continue,
+    /* get most up-to-date fstat on src to pre-trunc dst size so unwritten regions become holes */
+    let Ok(metadata) = fstat(src) else {
+        return Err(FileOpsErrors::UnableToEnumerate);
+    };
+
+    ftruncate(dst, metadata.st_size as u64).map_err(|_| FileOpsErrors::WriteError)?;
+
+    let mut offset: u64 = 0u64;
+    while offset < metadata.st_size as u64 {
+        let data_start = match seek(src, SeekFrom::Data(offset)) {
+            Ok(pos) => pos,
+            Err(Errno::NXIO) => break, /* no remaining legitimate data  */
             Err(_) => return Err(FileOpsErrors::ReadError),
         };
 
-        let mut bytes_written: usize = 0;
-        while bytes_written < bytes_read {
-            match write(dst, &buf[bytes_written..bytes_read]) {
-                Ok(wrote) => bytes_written += wrote,
-                Err(Errno::INTR) => continue,
-                Err(_) => return Err(FileOpsErrors::WriteError),
-            }
-        }
-    }
+        let data_end =
+            seek(src, SeekFrom::Hole(data_start)).map_err(|_| FileOpsErrors::ReadError)?;
 
+        let mut pos = data_start;
+        while pos < data_end {
+            let data_len = ((data_end - pos) as usize).min(READ_BUFFER_SIZE);
+            let bytes_read = match pread(src, &mut buffer[..data_len], pos) {
+                Ok(0) => break,
+                Ok(bytes_read) => bytes_read,
+                Err(Errno::INTR) => continue,
+                Err(_) => return Err(FileOpsErrors::ReadError),
+            };
+
+            let mut written = 0;
+            while written < bytes_read {
+                match pwrite(dst, &buffer[written..bytes_read], pos + written as u64) {
+                    Ok(0) => return Err(FileOpsErrors::WriteError),
+                    Ok(w) => written += w,
+                    Err(Errno::INTR) => continue,
+                    Err(_) => return Err(FileOpsErrors::WriteError),
+                }
+            }
+            pos += bytes_read as u64;
+        }
+
+        offset = data_end;
+    }
     Ok(())
 }
 

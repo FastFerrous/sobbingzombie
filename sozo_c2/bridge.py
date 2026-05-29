@@ -46,7 +46,7 @@ import string
 import sys
 from pathlib import Path
 from typing import Optional
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import urlparse, parse_qs
 
 try:
     import websockets
@@ -370,7 +370,7 @@ async def ws_handler(ws) -> None:
                     # (identity, payload) = ready to send.
                     import modules as _mod
 
-                    resolve = _mod.resolve_command(cmd_text)
+                    resolve = _mod.resolve_command(cmd_text, proto._command_map)
 
                     if resolve is None:
                         await send_ws(

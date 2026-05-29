@@ -78,8 +78,11 @@ MODULES_DIR = Path("./modules")
 
 # ---------------------------------------------------------------------------
 # Dynamic module registry
+# NOTE: loaded_modules is intentionally NOT stored here as a global.
+# Each QUIC connection (SozoServerProtocol) maintains its own per-connection
+# loaded_modules dict so that a module loaded on connection A is not
+# incorrectly assumed to be loaded on connection B.
 # ---------------------------------------------------------------------------
-loaded_modules: dict[str, int] = {}
 
 # ---------------------------------------------------------------------------
 # Loadable module table
@@ -145,23 +148,34 @@ COMMAND_MAP: dict[str, tuple[int, Callable[[str], bytes]]] = {
 }
 
 
-def register_loaded_module(module_name: str, identity: int) -> None:
+def register_loaded_module(
+    module_name: str,
+    identity: int,
+    command_map: dict,
+    decoders: dict,
+    loaded_modules: dict,
+) -> None:
+    """
+    Register a dynamically loaded module into the per-connection registries.
+    All three dicts are owned by the SozoServerProtocol instance so that
+    each connection has an independent view of which modules are loaded.
+    """
     loaded_modules[module_name] = identity
     if module_name == "file_ops":
-        COMMAND_MAP["cat"] = (
+        command_map["cat"] = (
             identity,
             lambda args: _fileops_payload(FILEOPS_OP_CAT, args),
         )
-        COMMAND_MAP["copy"] = (
+        command_map["copy"] = (
             identity,
             lambda args: _fileops_two_path_payload(FILEOPS_OP_COPY, args),
         )
-        COMMAND_MAP["remove"] = (identity, lambda args: _remove_payload(args))
-        COMMAND_MAP["move"] = (
+        command_map["remove"] = (identity, lambda args: _remove_payload(args))
+        command_map["move"] = (
             identity,
             lambda args: _fileops_two_path_payload(FILEOPS_OP_MOVE, args),
         )
-        DECODERS[identity] = {
+        decoders[identity] = {
             FILEOPS_OP_CAT: _decode_cat,
             FILEOPS_OP_COPY: _decode_fileops_status,
             FILEOPS_OP_REMOVE: _decode_fileops_status,
@@ -169,17 +183,29 @@ def register_loaded_module(module_name: str, identity: int) -> None:
         }
 
 
-def resolve_command(cmd_text: str) -> tuple[int, bytes] | tuple[str, str] | None:
+def resolve_command(
+    cmd_text: str,
+    command_map: dict | None = None,
+) -> tuple[int, bytes] | tuple[str, str] | None:
+    """
+    Resolve a command string to (identity, payload) or ("load_required", name).
+    Pass the per-connection command_map to include dynamically loaded modules.
+    Falls back to the static COMMAND_MAP if none provided.
+    """
     parts = cmd_text.strip().split(None, 1)
     verb = parts[0].lower()
     args = parts[1] if len(parts) > 1 else ""
-    entry = COMMAND_MAP.get(verb)
+    # Check per-connection map first (loaded modules), then static map
+    effective_map = {**COMMAND_MAP, **(command_map or {})}
+    entry = effective_map.get(verb)
     if entry is not None:
         identity, builder = entry
         return identity, builder(args)
     module_name = LOADABLE_MODULES.get(verb)
     if module_name is not None:
-        return ("load_required", module_name)
+        # Only return load_required if not already loaded on this connection
+        if command_map is None or verb not in command_map:
+            return ("load_required", module_name)
     return None
 
 
@@ -188,8 +214,12 @@ def resolve_command(cmd_text: str) -> tuple[int, bytes] | tuple[str, str] | None
 # ---------------------------------------------------------------------------
 
 
-def retcode_name(module_identity: int, retcode: int) -> str:
-    if module_identity in loaded_modules.values():
+def retcode_name(
+    module_identity: int,
+    retcode: int,
+    loaded_modules: dict | None = None,
+) -> str:
+    if loaded_modules and module_identity in loaded_modules.values():
         name = FILEOPS_ERRORS.get(retcode)
         if name is not None:
             return name
@@ -589,8 +619,18 @@ DECODERS: dict[int, dict[int, Callable[[bytes], dict]]] = {
 }
 
 
-def decode_response(module_identity: int, opcode: int, data: bytes) -> dict:
-    module_decoders = DECODERS.get(module_identity, {})
+def decode_response(
+    module_identity: int,
+    opcode: int,
+    data: bytes,
+    decoders: dict | None = None,
+) -> dict:
+    """
+    Decode a reassembled response. Pass the per-connection decoders dict
+    to include dynamically loaded module decoders.
+    """
+    effective = {**DECODERS, **(decoders or {})}
+    module_decoders = effective.get(module_identity, {})
     decoder = module_decoders.get(opcode)
     if decoder:
         try:

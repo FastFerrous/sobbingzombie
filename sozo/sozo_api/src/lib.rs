@@ -5,6 +5,8 @@ use async_trait::async_trait;
 use tokio::sync::mpsc::Sender;
 use tokio_util::sync::CancellationToken;
 
+pub const BUS_MESSAGE_MAX_SIZE: u32 = 4096;
+
 pub struct BusMessage {
     pub identity: ModuleIdentity, /* local routing destination -- module bus utilizes this to route internal to process */
     pub remote: Option<ModuleIdentity>, /* optional module identity to specify the remote or end `target` for the destination; Used via Comms to specify the over the wire module that should be routed this data */
@@ -35,5 +37,3 @@ impl ModuleIdentity {
         ModuleIdentity(rand::random::<u32>() & CUSTOM_IDENTITY_RANGE)
     }
 }
-
-/* TODO: Currently using comms to limit the message size that is carried by the bus -- move that here so that bus message is limited */

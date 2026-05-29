@@ -1,8 +1,7 @@
 use super::ls::DirWalker;
 use super::netstat::Netstat;
 use super::tasklist::Tasklist;
-use crate::quic::MAXIMUM_DATA_SIZE;
-use sozo_api::{BusMessage, Module, ModuleIdentity, sozo_debug};
+use sozo_api::{BUS_MESSAGE_MAX_SIZE, BusMessage, Module, ModuleIdentity, sozo_debug};
 use std::fs;
 use tokio::sync::Mutex;
 use tokio::sync::mpsc::{Receiver, Sender};
@@ -129,20 +128,20 @@ impl Shell {
         let data = response.unwrap_or_default();
 
         let total_chunks: u16 = if data.len()
-            <= (MAXIMUM_DATA_SIZE - INIT_RESPONSE_HDR_LEN) as usize
+            <= (BUS_MESSAGE_MAX_SIZE - INIT_RESPONSE_HDR_LEN) as usize
         {
             1
         } else {
-            let remaining = data.len() - (MAXIMUM_DATA_SIZE - INIT_RESPONSE_HDR_LEN) as usize;
-            (1 + remaining.div_ceil((MAXIMUM_DATA_SIZE - CONT_RESPONSE_HDR_LEN) as usize)) as u16
+            let remaining = data.len() - (BUS_MESSAGE_MAX_SIZE - INIT_RESPONSE_HDR_LEN) as usize;
+            (1 + remaining.div_ceil((BUS_MESSAGE_MAX_SIZE - CONT_RESPONSE_HDR_LEN) as usize)) as u16
         };
 
         let mut offset = 0;
         for chunk_index in 0..total_chunks {
             let chunk_len = if 0 == chunk_index {
-                MAXIMUM_DATA_SIZE - INIT_RESPONSE_HDR_LEN
+                BUS_MESSAGE_MAX_SIZE - INIT_RESPONSE_HDR_LEN
             } else {
-                MAXIMUM_DATA_SIZE - CONT_RESPONSE_HDR_LEN
+                BUS_MESSAGE_MAX_SIZE - CONT_RESPONSE_HDR_LEN
             };
 
             let end = (offset + chunk_len as usize).min(data.len());

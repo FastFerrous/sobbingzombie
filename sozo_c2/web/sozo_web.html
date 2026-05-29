@@ -1590,12 +1590,37 @@
         }
 
         function fmtMode(mode) {
-            const t = [
-                (mode & 0o40000) ? 'd' : (mode & 0o120000) === 0o120000 ? 'l' : '-',
-            ];
-            const bits = ['r', 'w', 'x', 'r', 'w', 'x', 'r', 'w', 'x'];
-            for (let i = 0; i < 9; i++) t.push((mode >> (8 - i)) & 1 ? bits[i] : '-');
-            return t.join('');
+            // File type character
+            let type = '-';
+            if ((mode & 0o170000) === 0o040000) type = 'd';  // directory
+            else if ((mode & 0o170000) === 0o120000) type = 'l';  // symlink
+            else if ((mode & 0o170000) === 0o060000) type = 'b';  // block device
+            else if ((mode & 0o170000) === 0o020000) type = 'c';  // char device
+            else if ((mode & 0o170000) === 0o010000) type = 'p';  // fifo
+            else if ((mode & 0o170000) === 0o140000) type = 's';  // socket
+
+            // Owner rwx + SUID
+            const ur = (mode & 0o400) ? 'r' : '-';
+            const uw = (mode & 0o200) ? 'w' : '-';
+            const ux = (mode & 0o100)
+                ? ((mode & 0o4000) ? 's' : 'x')   // suid + exec = s, exec only = x
+                : ((mode & 0o4000) ? 'S' : '-');   // suid no exec = S
+
+            // Group rwx + SGID
+            const gr = (mode & 0o040) ? 'r' : '-';
+            const gw = (mode & 0o020) ? 'w' : '-';
+            const gx = (mode & 0o010)
+                ? ((mode & 0o2000) ? 's' : 'x')   // sgid + exec = s, exec only = x
+                : ((mode & 0o2000) ? 'S' : '-');   // sgid no exec = S
+
+            // Other rwx + sticky
+            const or = (mode & 0o004) ? 'r' : '-';
+            const ow = (mode & 0o002) ? 'w' : '-';
+            const ox = (mode & 0o001)
+                ? ((mode & 0o1000) ? 't' : 'x')   // sticky + exec = t, exec only = x
+                : ((mode & 0o1000) ? 'T' : '-');   // sticky no exec = T
+
+            return `${type}${ur}${uw}${ux}${gr}${gw}${gx}${or}${ow}${ox}`;
         }
 
         function fmtSize(bytes) {

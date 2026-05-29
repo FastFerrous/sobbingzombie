@@ -1,5 +1,5 @@
 use sozo_api::plugin::{HostVTable, ModuleVTable, PollStatus};
-use sozo_api::{ModuleIdentity, sozo_debug};
+use sozo_api::{BUS_MESSAGE_MAX_SIZE, ModuleIdentity, sozo_debug};
 use std::ffi::c_void;
 use std::io;
 use std::sync::Mutex;
@@ -11,6 +11,7 @@ mod remove;
 
 const MAX_PATH_LEN: usize = 512;
 
+/* used by move and copy operations */
 pub struct PathArgs {
     pub src: String,
     pub dst: String,
@@ -108,19 +109,16 @@ impl FileOperations {
          */
         const CONT_RESPONSE_HDR_LEN: u32 = 8;
 
-        /* Maximum length of `data` buffer within a bus message */
-        const MAXIMUM_DATA_SIZE: u32 = 4096;
-
         /* extract any data, if applicable and determine total number of chunks that will be sent */
         let data = response.unwrap_or_default();
 
         let total_chunks: u16 = if data.len()
-            <= (MAXIMUM_DATA_SIZE - INIT_RESPONSE_HDR_LEN) as usize
+            <= (BUS_MESSAGE_MAX_SIZE - INIT_RESPONSE_HDR_LEN) as usize
         {
             1
         } else {
-            let remaining = data.len() - (MAXIMUM_DATA_SIZE - INIT_RESPONSE_HDR_LEN) as usize;
-            (1 + remaining.div_ceil((MAXIMUM_DATA_SIZE - CONT_RESPONSE_HDR_LEN) as usize)) as u16
+            let remaining = data.len() - (BUS_MESSAGE_MAX_SIZE - INIT_RESPONSE_HDR_LEN) as usize;
+            (1 + remaining.div_ceil((BUS_MESSAGE_MAX_SIZE - CONT_RESPONSE_HDR_LEN) as usize)) as u16
         };
 
         let remote_identity = ModuleIdentity::SHELL.0;
@@ -128,9 +126,9 @@ impl FileOperations {
         let mut offset = 0;
         for chunk_index in 0..total_chunks {
             let chunk_len = if 0 == chunk_index {
-                MAXIMUM_DATA_SIZE - INIT_RESPONSE_HDR_LEN
+                BUS_MESSAGE_MAX_SIZE - INIT_RESPONSE_HDR_LEN
             } else {
-                MAXIMUM_DATA_SIZE - CONT_RESPONSE_HDR_LEN
+                BUS_MESSAGE_MAX_SIZE - CONT_RESPONSE_HDR_LEN
             };
 
             let end = (offset + chunk_len as usize).min(data.len());
@@ -295,12 +293,8 @@ pub unsafe extern "C" fn module_entry() -> *const ModuleVTable {
     &VTABLE
 }
 
-// Once we move maximum size into the sozo api, modify this accordingly
 // using impl for io error -- update all commands and rustix commands to map to that for ease rather than mutliple large match statements
-
-// move also needs to keep and reassign xattrs and acls as well -- native mv preserves these
-// move also needs to honor sparsing, currently sparsed file would become actual ballooned size
-
-// for ls operations -- mode is not reflecting whether we have suid/guid bits set. need to ensure we are handling that on c2
-// future note -- need to track which modules have been loaded for each session. ie fileops may have only been loaded for one but still needs the other
 // now that module is essentially built, fix errors and then add unloading operation
+
+// copy needs to handle sparsing the same as our mv impl -- may need to make shared spaces for copy and move -- ie args, buffered write, etc.
+// test the new buffered read via mv
