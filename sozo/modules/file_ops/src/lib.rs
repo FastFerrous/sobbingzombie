@@ -5,17 +5,10 @@ use std::io;
 use std::sync::Mutex;
 use std::sync::mpsc::{Receiver, SyncSender, sync_channel};
 mod cat;
-mod copy;
-mod mv;
+mod copy_move;
 mod remove;
 
 const MAX_PATH_LEN: usize = 512;
-
-/* used by move and copy operations */
-pub struct PathArgs {
-    pub src: String,
-    pub dst: String,
-}
 
 #[repr(u8)]
 #[derive(Copy, Clone, Debug)]
@@ -204,10 +197,7 @@ unsafe extern "C" fn plugin_run(instance: *mut c_void, host_vtable: *const HostV
         Err(_) => return,
     };
 
-    sozo_debug!(
-        "FileOperations::plugin_run",
-        "waiting for inbound file_ops requests"
-    );
+    sozo_debug!("FileOperations::plugin_run", "awaiting tasks");
 
     loop {
         let result =
@@ -234,9 +224,9 @@ unsafe extern "C" fn plugin_run(instance: *mut c_void, host_vtable: *const HostV
 
                 let result = match opcode {
                     FileOpsCommands::Cat => cat::read_file_contents(&msg[size_of::<u8>()..]),
-                    FileOpsCommands::Copy => copy::copy_file(&msg[size_of::<u8>()..]),
+                    FileOpsCommands::Copy => copy_move::copy_file(&msg[size_of::<u8>()..]),
                     FileOpsCommands::Remove => remove::remove_path(&msg[size_of::<u8>()..]),
-                    FileOpsCommands::Move => mv::move_file(&msg[size_of::<u8>()..]),
+                    FileOpsCommands::Move => copy_move::move_file(&msg[size_of::<u8>()..]),
                     FileOpsCommands::Stat => remove::remove_path(&msg[size_of::<u8>()..]),
                 };
 
@@ -294,7 +284,6 @@ pub unsafe extern "C" fn module_entry() -> *const ModuleVTable {
 }
 
 // using impl for io error -- update all commands and rustix commands to map to that for ease rather than mutliple large match statements
-// now that module is essentially built, fix errors and then add unloading operation
+// currently taking rustix::io::err and turning it into a io::error and then we impl a from io:error into ours
 
-// copy needs to handle sparsing the same as our mv impl -- may need to make shared spaces for copy and move -- ie args, buffered write, etc.
-// test the new buffered read via mv
+// now that module is essentially built, fix errors and then add unloading operation

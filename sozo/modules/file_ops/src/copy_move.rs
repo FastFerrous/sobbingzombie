@@ -1,15 +1,21 @@
-use crate::{FileOpsErrors, MAX_PATH_LEN, PathArgs};
+use crate::{FileOpsErrors, MAX_PATH_LEN};
 use rustix::fs::{
-    AtFlags, CWD, Gid, Mode, OFlags, RenameFlags, SeekFrom, Timespec, Timestamps, Uid, fchmod,
-    fchown, fstat, fsync, ftruncate, futimens, openat, renameat_with, seek, unlinkat,
+    AtFlags, CWD, FileType, Gid, Mode, OFlags, RenameFlags, SeekFrom, Timespec, Timestamps, Uid,
+    fchmod, fchown, fstat, fsync, ftruncate, futimens, openat, renameat_with, seek, unlinkat,
 };
 use rustix::io::{Errno, pread, pwrite};
 use std::fs::{Metadata, symlink_metadata};
 use std::io::{Error, ErrorKind};
 use std::os::fd::OwnedFd;
 
-/* this impl of mv does not preserve xattrs or acls -- can be changed to include these at a later time */
+struct PathArgs {
+    src: String,
+    dst: String,
+}
 
+/* both copy and mv are sparse file aware and ensure that no holes are interpreted as raw values, ballooning files on disk */
+
+/* this impl of mv does not preserve xattrs or acls -- can be changed to include these at a later time */
 pub fn move_file(args: &[u8]) -> Result<Vec<u8>, FileOpsErrors> {
     let Some(args) = parse_args(args) else {
         return Err(FileOpsErrors::InvalidArguments);
@@ -36,6 +42,58 @@ pub fn move_file(args: &[u8]) -> Result<Vec<u8>, FileOpsErrors> {
             _ => return Err(FileOpsErrors::Unknown),
         },
     }
+
+    Ok(Vec::new())
+}
+
+pub fn copy_file(args: &[u8]) -> Result<Vec<u8>, FileOpsErrors> {
+    let Some(args) = parse_args(args) else {
+        return Err(FileOpsErrors::InvalidArguments);
+    };
+
+    let src: OwnedFd = openat(
+        CWD,
+        &args.src,
+        OFlags::RDONLY | OFlags::NOFOLLOW | OFlags::CLOEXEC,
+        Mode::empty(),
+    )
+    .map_err(Error::from)?;
+
+    match fstat(&src) {
+        Ok(metadata) => {
+            if FileType::from_raw_mode(metadata.st_mode) != FileType::RegularFile {
+                return Err(FileOpsErrors::NotRegularFile);
+            }
+        }
+        Err(_) => return Err(FileOpsErrors::UnableToEnumerate),
+    };
+
+    let dst: OwnedFd = match openat(
+        CWD,
+        &args.dst,
+        OFlags::WRONLY | OFlags::CREATE | OFlags::CLOEXEC | OFlags::EXCL | OFlags::NOFOLLOW,
+        Mode::RUSR | Mode::WUSR | Mode::RGRP | Mode::ROTH,
+    ) {
+        Ok(fd) => fd,
+        Err(Errno::EXIST) => {
+            let metadata =
+                symlink_metadata(&args.dst).map_err(|_| FileOpsErrors::UnableToEnumerate)?;
+            if !metadata.is_file() {
+                return Err(FileOpsErrors::NotRegularFile);
+            }
+
+            openat(
+                CWD,
+                &args.dst,
+                OFlags::WRONLY | OFlags::CLOEXEC | OFlags::TRUNC | OFlags::NOFOLLOW,
+                Mode::empty(),
+            )
+            .map_err(Error::from)?
+        }
+        Err(err) => return Err(Error::from(err).into()),
+    };
+
+    buffered_io_copy(&src, &dst)?;
 
     Ok(Vec::new())
 }
@@ -125,7 +183,7 @@ fn handle_exdev_error(args: &PathArgs) -> Result<(), FileOpsErrors> {
      * opening source and destination to perform buffered io read/write
      * once transfer has been completed, copy metadata from source prior to unlink
      */
-    let src_fd = openat(
+    let src_fd: OwnedFd = openat(
         CWD,
         &args.src,
         OFlags::RDONLY | OFlags::NOFOLLOW | OFlags::CLOEXEC,
@@ -167,15 +225,18 @@ fn buffered_io_copy(src: &OwnedFd, dst: &OwnedFd) -> Result<(), FileOpsErrors> {
 
     let mut offset: u64 = 0u64;
     while offset < metadata.st_size as u64 {
+        /* determine the start of legitimate data within the file */
         let data_start = match seek(src, SeekFrom::Data(offset)) {
             Ok(pos) => pos,
-            Err(Errno::NXIO) => break, /* no remaining legitimate data  */
+            Err(Errno::NXIO) => break, /* no remaining data or a hole exists until EOF */
             Err(_) => return Err(FileOpsErrors::ReadError),
         };
 
-        let data_end =
+        /* determine the end of the legitimate data ie start of new hole */
+        let data_end: u64 =
             seek(src, SeekFrom::Hole(data_start)).map_err(|_| FileOpsErrors::ReadError)?;
 
+        /* set `position` to data start and loop until all data has been read and written into the correct position */
         let mut pos = data_start;
         while pos < data_end {
             let data_len = ((data_end - pos) as usize).min(READ_BUFFER_SIZE);
@@ -186,11 +247,15 @@ fn buffered_io_copy(src: &OwnedFd, dst: &OwnedFd) -> Result<(), FileOpsErrors> {
                 Err(_) => return Err(FileOpsErrors::ReadError),
             };
 
-            let mut written = 0;
-            while written < bytes_read {
-                match pwrite(dst, &buffer[written..bytes_read], pos + written as u64) {
+            let mut total_written = 0;
+            while total_written < bytes_read {
+                match pwrite(
+                    dst,
+                    &buffer[total_written..bytes_read],
+                    pos + total_written as u64,
+                ) {
                     Ok(0) => return Err(FileOpsErrors::WriteError),
-                    Ok(w) => written += w,
+                    Ok(bytes_written) => total_written += bytes_written,
                     Err(Errno::INTR) => continue,
                     Err(_) => return Err(FileOpsErrors::WriteError),
                 }
@@ -198,6 +263,7 @@ fn buffered_io_copy(src: &OwnedFd, dst: &OwnedFd) -> Result<(), FileOpsErrors> {
             pos += bytes_read as u64;
         }
 
+        /* set current file offset to start of `next` hole */
         offset = data_end;
     }
     Ok(())
