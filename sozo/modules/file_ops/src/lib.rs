@@ -7,6 +7,7 @@ use std::sync::mpsc::{Receiver, SyncSender, sync_channel};
 mod cat;
 mod copy_move;
 mod remove;
+mod stat;
 
 const MAX_PATH_LEN: usize = 512;
 
@@ -227,7 +228,7 @@ unsafe extern "C" fn plugin_run(instance: *mut c_void, host_vtable: *const HostV
                     FileOpsCommands::Copy => copy_move::copy_file(&msg[size_of::<u8>()..]),
                     FileOpsCommands::Remove => remove::remove_path(&msg[size_of::<u8>()..]),
                     FileOpsCommands::Move => copy_move::move_file(&msg[size_of::<u8>()..]),
-                    FileOpsCommands::Stat => remove::remove_path(&msg[size_of::<u8>()..]),
+                    FileOpsCommands::Stat => stat::stat_file(&msg[size_of::<u8>()..]),
                 };
 
                 match result {
@@ -283,7 +284,11 @@ pub unsafe extern "C" fn module_entry() -> *const ModuleVTable {
     &VTABLE
 }
 
-// using impl for io error -- update all commands and rustix commands to map to that for ease rather than mutliple large match statements
-// currently taking rustix::io::err and turning it into a io::error and then we impl a from io:error into ours
+/*
+* todo
 
-// now that module is essentially built, fix errors and then add unloading operation
+* update errors to use new map -- need to finish impl
+* stat
+* add unload operation
+
+*/
