@@ -287,7 +287,21 @@ pub unsafe extern "C" fn module_entry() -> *const ModuleVTable {
 /*
 * todo
 
-* update errors to use new map -- need to finish impl
 * add unload operation
+
+* expose `loaded libraries` command for sessions so that each session is aware of the loaded modules to permit unloading
+* permit unloaded via the u32 identity
+
+* c2 will send an unload request to the loader since thats the exposed module for loading/unloading
+* loader will call into control messages for deregister by identity
+* if identity does not exist -- return invalid identity error
+* if found, use bus control unregister function
+* bus will then call the token within the context that identifies that the module is to be shutdown and cancelled
+* that will trigger in the poll and module will be notified and then break and return
+
+* upon return on modules, check whether we were told to unload or if an error occured and we exited early. if so, we need to cancel token
+so other modules are aware of critical errors
+
+
 
 */

@@ -315,6 +315,3 @@ impl Module for LibraryLoader {
         self.tx.try_send(msg).is_ok()
     }
 }
-
-// get rid of 'file ops on first use]
-// just at teh top of the command output, make it known that if commands reuire modules to be loaded, this will occur transparently, no need to add in each

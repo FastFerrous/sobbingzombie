@@ -213,5 +213,3 @@ struct ThreadSafeHostVTable(*const HostVTable);
 unsafe impl Send for ThreadSafeCVoid {}
 unsafe impl Send for ThreadSafeVTable {}
 unsafe impl Send for ThreadSafeHostVTable {}
-
-/* TODO: Decide on how to handle when modules return back from their plugin_run function. Ie critical error or deregistered, etc. Current impl if it returns, nothing occurs -- this needs to be handled to prevent issues -- Consider this thought once we start deciding on tear down of loaded modules */
