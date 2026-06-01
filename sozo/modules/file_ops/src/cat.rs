@@ -1,6 +1,6 @@
 use crate::{FileOpsErrors, MAX_PATH_LEN};
 use std::fs::File;
-use std::io::{ErrorKind, Read};
+use std::io::Read;
 use std::os::unix::fs::MetadataExt;
 
 pub fn read_file_contents(args: &[u8]) -> Result<Vec<u8>, FileOpsErrors> {
@@ -8,14 +8,7 @@ pub fn read_file_contents(args: &[u8]) -> Result<Vec<u8>, FileOpsErrors> {
         return Err(FileOpsErrors::InvalidArguments);
     };
 
-    let mut file = match File::open(&path) {
-        Ok(file) => file,
-        Err(e) => match e.kind() {
-            ErrorKind::NotFound => return Err(FileOpsErrors::PathNotFound),
-            ErrorKind::PermissionDenied => return Err(FileOpsErrors::PermissionDenied),
-            _ => return Err(FileOpsErrors::Unknown),
-        },
-    };
+    let mut file = File::open(&path)?;
 
     let Ok(metadata) = file.metadata() else {
         return Err(FileOpsErrors::UnableToEnumerate);
