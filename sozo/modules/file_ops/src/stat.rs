@@ -1,25 +1,27 @@
 use crate::{FileOpsErrors, MAX_PATH_LEN};
 use rustix::fs::{AtFlags, CWD, Stat, statat};
+use std::{
+    collections::HashMap,
+    fs::{self, File},
+};
 
 struct StatContents {
-    /* device, inode, number of links */
     dev: u64,
     inode: u64,
     nlinks: u64,
-
-    /* filetype + permissions */
     mode: u32,
-
-    /* user and group names -- fallback to uid/gid values if not present */
     uid: u32,
     gid: u32,
-
-    /* file size logically and physically */
+    /*
+     * String variants of resolved uid & gid follow above fields -- left out of structure due to variant length and sizeof ops
+     * user_len: u8
+     * username
+     * group_len: u8
+     * group
+     */
     size: u64,
     io_block: u64,
     blocks: u64,
-
-    /* timestamps */
     access: u64,
     access_nsec: u64,
     modify: u64,
@@ -36,25 +38,10 @@ pub fn stat_file(args: &[u8]) -> Result<Vec<u8>, FileOpsErrors> {
     let metadata: Stat = statat(CWD, &path, AtFlags::SYMLINK_NOFOLLOW)
         .map_err(|_| FileOpsErrors::UnableToEnumerate)?;
 
-    let stat_contents = StatContents {
-        dev: metadata.st_dev,
-        inode: metadata.st_ino,
-        nlinks: metadata.st_nlink,
-        mode: metadata.st_mode,
-        uid: metadata.st_uid,
-        gid: metadata.st_gid,
-        size: metadata.st_size as u64,
-        io_block: metadata.st_blksize as u64,
-        blocks: metadata.st_blocks as u64,
-        access: metadata.st_atime as u64,
-        access_nsec: metadata.st_atime_nsec,
-        modify: metadata.st_mtime as u64,
-        modify_nsec: metadata.st_mtime_nsec,
-        change: metadata.st_ctime as u64,
-        change_nsec: metadata.st_ctime_nsec,
-    };
+    let user_db = enumerate_users()?;
+    let group_db = enumerate_groups()?;
 
-    pack_stat(stat_contents)
+    pack_stat(metadata, user_db, group_db)
 }
 
 fn parse_args(args: &[u8]) -> Option<String> {
@@ -82,16 +69,86 @@ fn parse_args(args: &[u8]) -> Option<String> {
     String::from_utf8(path).ok()
 }
 
-fn pack_stat(stat_contents: StatContents) -> Result<Vec<u8>, FileOpsErrors> {
-    let mut buffer: Vec<u8> = Vec::new();
-    if buffer.try_reserve(size_of::<StatContents>()).is_err() {
+fn enumerate_users() -> Result<HashMap<u32, String>, FileOpsErrors> {
+    let Ok(file_contents) = fs::read_to_string("/etc/passwd") else {
+        return Err(FileOpsErrors::UnableToOpenFile);
+    };
+
+    let user_db: HashMap<u32, String> = file_contents
+        .lines()
+        .filter_map(|line: &str| {
+            let mut fields = line.split(':');
+            let username = fields.next()?;
+            let _ = fields.next()?;
+            let uid: u32 = fields.next()?.parse().ok()?;
+            Some((uid, username.to_string()))
+        })
+        .collect();
+
+    Ok(user_db)
+}
+
+fn enumerate_groups() -> Result<HashMap<u32, String>, FileOpsErrors> {
+    let Ok(file_contents) = fs::read_to_string("/etc/group") else {
+        return Err(FileOpsErrors::UnableToOpenFile);
+    };
+
+    let user_db: HashMap<u32, String> = file_contents
+        .lines()
+        .filter_map(|line: &str| {
+            let mut fields = line.split(':');
+            let group = fields.next()?;
+            let _ = fields.next()?;
+            let gid: u32 = fields.next()?.parse().ok()?;
+            Some((gid, group.to_string()))
+        })
+        .collect();
+
+    Ok(user_db)
+}
+
+fn pack_stat(
+    metadata: Stat,
+    users: HashMap<u32, String>,
+    groups: HashMap<u32, String>,
+) -> Result<Vec<u8>, FileOpsErrors> {
+    let user: String = users
+        .get(&metadata.st_uid)
+        .cloned()
+        .unwrap_or_else(|| metadata.st_uid.to_string());
+
+    let group: String = groups
+        .get(&metadata.st_gid)
+        .cloned()
+        .unwrap_or_else(|| metadata.st_uid.to_string());
+
+    let total_size = size_of::<StatContents>() + user.len() + group.len();
+
+    let mut buffer = Vec::new();
+    if buffer.try_reserve(total_size).is_err() {
         return Err(FileOpsErrors::Critical);
     }
 
-    Ok(Vec::new())
-}
+    buffer.extend_from_slice(&total_size.to_be_bytes());
+    buffer.extend_from_slice(&metadata.st_dev.to_be_bytes());
+    buffer.extend_from_slice(&metadata.st_ino.to_be_bytes());
+    buffer.extend_from_slice(&metadata.st_nlink.to_be_bytes());
+    buffer.extend_from_slice(&metadata.st_mode.to_be_bytes());
+    buffer.extend_from_slice(&metadata.st_uid.to_be_bytes());
+    buffer.extend_from_slice(&metadata.st_gid.to_be_bytes());
+    buffer.extend_from_slice(&(user.len() as u8).to_be_bytes());
+    buffer.extend_from_slice(user.as_bytes());
+    buffer.extend_from_slice(&(group.len() as u8).to_be_bytes());
+    buffer.extend_from_slice(group.as_bytes());
+    buffer.extend_from_slice(&metadata.st_size.to_be_bytes());
+    buffer.extend_from_slice(&metadata.st_blksize.to_be_bytes());
+    buffer.extend_from_slice(&metadata.st_blocks.to_be_bytes());
+    buffer.extend_from_slice(&metadata.st_atime.to_be_bytes());
+    buffer.extend_from_slice(&metadata.st_atime_nsec.to_be_bytes());
+    buffer.extend_from_slice(&metadata.st_mtime.to_be_bytes());
+    buffer.extend_from_slice(&metadata.st_mtime_nsec.to_be_bytes());
+    buffer.extend_from_slice(&metadata.st_ctime.to_be_bytes());
+    buffer.extend_from_slice(&metadata.st_ctime_nsec.to_be_bytes());
 
-// resolve user and group -- fallback to str id if not available
-// get actual errors -- current placeholders
-// pack the response
-// make it look like stat
+    Ok(buffer)
+}
