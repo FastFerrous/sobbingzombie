@@ -2,1441 +2,1450 @@
 <html lang="en">
 
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>sozo // quic console</title>
-    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&display=swap"
-        rel="stylesheet">
-    <style>
-        *,
-        *::before,
-        *::after {
-            box-sizing: border-box;
-            margin: 0;
-            padding: 0;
-        }
-
-        :root {
-            --bg: #0a0a08;
-            --bg2: #111110;
-            --bg3: #181816;
-            --bg4: #202020;
-            --border: #282826;
-            --amber: #e8a94a;
-            --amber-dim: #9e6e2a;
-            --amber-lo: #4a3010;
-            --green: #56c47e;
-            --green-dim: #244d32;
-            --red: #d95050;
-            --red-dim: #5a2222;
-            --blue: #5898d8;
-            --blue-dim: #1e3a5c;
-            --purple: #9878d8;
-            --purple-dim: #2e1e4a;
-            --muted: #484844;
-            --text: #bab8a8;
-            --text-dim: #606058;
-        }
-
-        html,
-        body {
-            height: 100%;
-            background: var(--bg);
-            color: var(--text);
-            font-family: 'JetBrains Mono', monospace;
-            font-size: 12px;
-            line-height: 1.5;
-            overflow: hidden;
-        }
-
-        body::before {
-            content: '';
-            position: fixed;
-            inset: 0;
-            background: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(255, 255, 255, .012) 2px, rgba(255, 255, 255, .012) 4px);
-            pointer-events: none;
-            z-index: 9999;
-        }
-
-        /* ── TOPBAR ── */
-        #topbar {
-            height: 38px;
-            background: var(--bg2);
-            border-bottom: 1px solid var(--border);
-            display: flex;
-            align-items: center;
-            padding: 0 14px;
-            gap: 12px;
-            flex-shrink: 0;
-        }
-
-        .logo {
-            font-size: 14px;
-            font-weight: 700;
-            letter-spacing: .08em;
-            color: var(--amber);
-            white-space: nowrap;
-        }
-
-        .logo span {
-            color: var(--muted);
-            font-weight: 300;
-        }
-
-        .vsep {
-            width: 1px;
-            height: 16px;
-            background: var(--border);
-            flex-shrink: 0;
-        }
-
-        .pill {
-            font-size: 10px;
-            padding: 2px 7px;
-            border-radius: 3px;
-            border: 1px solid var(--border);
-            color: var(--text-dim);
-            background: var(--bg3);
-            white-space: nowrap;
-            display: flex;
-            align-items: center;
-            gap: 5px;
-            flex-shrink: 0;
-        }
-
-        .dot {
-            width: 6px;
-            height: 6px;
-            border-radius: 50%;
-            background: var(--muted);
-            flex-shrink: 0;
-        }
-
-        .dot.on {
-            background: var(--green);
-            box-shadow: 0 0 5px var(--green-dim);
-        }
-
-        .dot.ws {
-            background: var(--amber);
-            box-shadow: 0 0 5px var(--amber-dim);
-        }
-
-        .dot.off {
-            background: var(--red);
-            box-shadow: 0 0 5px var(--red-dim);
-        }
-
-        #role-badge {
-            font-size: 10px;
-            padding: 2px 8px;
-            border-radius: 3px;
-            font-weight: 600;
-            letter-spacing: .05em;
-            flex-shrink: 0;
-        }
-
-        #role-badge.operator {
-            background: var(--amber-lo);
-            color: var(--amber);
-            border: 1px solid var(--amber-dim);
-        }
-
-        #role-badge.observer {
-            background: var(--purple-dim);
-            color: var(--purple);
-            border: 1px solid var(--purple-dim);
-        }
-
-        #role-badge.none {
-            background: var(--red-dim);
-            color: var(--red);
-            border: 1px solid var(--red-dim);
-        }
-
-        .topbar-right {
-            margin-left: auto;
-            display: flex;
-            gap: 8px;
-            align-items: center;
-        }
-
-        .tbtn {
-            height: 24px;
-            padding: 0 9px;
-            background: transparent;
-            border: 1px solid var(--border);
-            color: var(--text-dim);
-            font-family: inherit;
-            font-size: 10px;
-            letter-spacing: .04em;
-            cursor: pointer;
-            border-radius: 3px;
-            transition: all .15s;
-        }
-
-        .tbtn:hover {
-            border-color: var(--amber-dim);
-            color: var(--amber);
-        }
-
-        /* ── LAYOUT ── */
-        #app {
-            display: flex;
-            height: calc(100vh - 38px);
-        }
-
-        /* ── LEFT PANE ── */
-        #left-pane {
-            width: 300px;
-            flex-shrink: 0;
-            background: var(--bg2);
-            border-right: 1px solid var(--border);
-            display: flex;
-            flex-direction: column;
-            overflow: hidden;
-        }
-
-        .pane-header {
-            padding: 9px 12px;
-            border-bottom: 1px solid var(--border);
-            font-size: 10px;
-            letter-spacing: .1em;
-            text-transform: uppercase;
-            color: var(--text-dim);
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            flex-shrink: 0;
-            gap: 8px;
-        }
-
-        .ph-btn {
-            font-size: 9px;
-            cursor: pointer;
-            color: var(--muted);
-            letter-spacing: .05em;
-            transition: color .15s;
-            flex-shrink: 0;
-        }
-
-        .ph-btn:hover {
-            color: var(--amber);
-        }
-
-        .ph-btn.danger:hover {
-            color: var(--red);
-        }
-
-        #target-filter {
-            background: var(--bg3);
-            border: 1px solid var(--border);
-            color: var(--text);
-            font-family: inherit;
-            font-size: 10px;
-            padding: 2px 5px;
-            border-radius: 3px;
-            cursor: pointer;
-            max-width: 130px;
-        }
-
-        #target-filter:focus {
-            outline: none;
-            border-color: var(--amber-dim);
-        }
-
-        #card-list {
-            flex: 1;
-            overflow-y: auto;
-            padding: 4px 0;
-        }
-
-        #card-list::-webkit-scrollbar {
-            width: 3px;
-        }
-
-        #card-list::-webkit-scrollbar-thumb {
-            background: var(--border);
-            border-radius: 2px;
-        }
-
-        .card-item {
-            padding: 8px 12px;
-            cursor: pointer;
-            border-left: 2px solid transparent;
-            transition: background .1s, border-color .1s;
-            display: flex;
-            flex-direction: column;
-            gap: 3px;
-        }
-
-        .card-item:hover {
-            background: var(--bg3);
-            border-left-color: var(--amber-dim);
-        }
-
-        .card-item.selected {
-            background: var(--bg3);
-            border-left-color: var(--amber);
-        }
-
-        .card-item.hidden {
-            display: none;
-        }
-
-        .ci-top {
-            display: flex;
-            align-items: center;
-            gap: 7px;
-        }
-
-        .ci-prompt {
-            color: var(--amber-dim);
-            font-size: 11px;
-            flex-shrink: 0;
-        }
-
-        .ci-cmd {
-            font-size: 12px;
-            color: var(--amber);
-            font-weight: 600;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            flex: 1;
-            min-width: 0;
-        }
-
-        .ci-badge {
-            font-size: 9px;
-            padding: 1px 5px;
-            border-radius: 2px;
-            flex-shrink: 0;
-        }
-
-        .ci-badge.run {
-            background: var(--blue-dim);
-            color: #70a8e8;
-        }
-
-        .ci-badge.ok {
-            background: var(--green-dim);
-            color: #70d898;
-        }
-
-        .ci-badge.err {
-            background: var(--red-dim);
-            color: #e08080;
-        }
-
-        .ci-badge.local {
-            background: var(--bg4);
-            color: var(--text-dim);
-        }
-
-        .ci-meta {
-            font-size: 10px;
-            color: var(--text-dim);
-        }
-
-        /* connections sub-panel */
-        #conn-panel {
-            border-top: 1px solid var(--border);
-            flex-shrink: 0;
-        }
-
-        .conn-toggle {
-            padding: 8px 12px;
-            font-size: 10px;
-            letter-spacing: .1em;
-            text-transform: uppercase;
-            color: var(--text-dim);
-            border-bottom: 1px solid var(--border);
-            cursor: pointer;
-            user-select: none;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-
-        .conn-toggle:hover {
-            color: var(--amber);
-        }
-
-        #conn-list {
-            max-height: 160px;
-            overflow-y: auto;
-        }
-
-        .conn-row {
-            padding: 5px 12px;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            cursor: pointer;
-            transition: background .1s;
-            border-left: 2px solid transparent;
-        }
-
-        .conn-row:hover {
-            background: var(--bg3);
-        }
-
-        .conn-row.active-conn {
-            border-left-color: var(--amber);
-            background: var(--bg3);
-        }
-
-        .cr-dot {
-            width: 5px;
-            height: 5px;
-            border-radius: 50%;
-            background: var(--green);
-            flex-shrink: 0;
-        }
-
-        .cr-name {
-            font-size: 11px;
-            color: var(--text);
-            flex: 1;
-            min-width: 0;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            white-space: nowrap;
-        }
-
-        .cr-addr {
-            font-size: 10px;
-            color: var(--text-dim);
-            flex-shrink: 0;
-        }
-
-        .cr-edit {
-            font-size: 10px;
-            color: var(--muted);
-            flex-shrink: 0;
-            cursor: pointer;
-            transition: color .15s;
-            padding: 0 3px;
-        }
-
-        .cr-edit:hover {
-            color: var(--amber);
-        }
-
-        .conn-empty {
-            padding: 8px 12px;
-            font-size: 11px;
-            color: var(--muted);
-        }
-
-        /* ── RIGHT PANE ── */
-        #right-pane {
-            flex: 1;
-            display: flex;
-            flex-direction: column;
-            overflow: hidden;
-            min-width: 0;
-        }
-
-        #output-header {
-            padding: 9px 14px;
-            border-bottom: 1px solid var(--border);
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            flex-shrink: 0;
-            min-height: 38px;
-            background: var(--bg2);
-        }
-
-        #output-title {
-            font-size: 12px;
-            color: var(--amber);
-            font-weight: 600;
-            flex: 1;
-            min-width: 0;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            white-space: nowrap;
-        }
-
-        #output-meta {
-            font-size: 10px;
-            color: var(--text-dim);
-            white-space: nowrap;
-            flex-shrink: 0;
-        }
-
-        #output-body {
-            flex: 1;
-            overflow-y: auto;
-            padding: 14px 16px;
-            font-size: 12px;
-            line-height: 1.7;
-        }
-
-        #output-body::-webkit-scrollbar {
-            width: 3px;
-        }
-
-        #output-body::-webkit-scrollbar-thumb {
-            background: var(--border);
-            border-radius: 2px;
-        }
-
-        /* plain text lines */
-        .out-line {
-            display: block;
-            white-space: pre-wrap;
-            word-break: break-all;
-        }
-
-        .out-line.recv {
-            color: var(--text);
-        }
-
-        .out-line.info {
-            color: var(--blue);
-        }
-
-        .out-line.warn {
-            color: var(--amber);
-        }
-
-        .out-line.err {
-            color: var(--red);
-        }
-
-        .out-line.sys {
-            color: var(--text-dim);
-            font-style: italic;
-        }
-
-        .out-line.help-h {
-            color: var(--amber);
-            font-weight: 600;
-            margin-top: 4px;
-        }
-
-        .out-line.help-c {
-            color: var(--text-dim);
-            padding-left: 16px;
-        }
-
-        /* ── PROCESS TABLE ── */
-        /* width:auto + border-collapse lets columns size to their content.
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>sozo // quic console</title>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&display=swap"
+    rel="stylesheet">
+  <style>
+    *,
+    *::before,
+    *::after {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    :root {
+      --bg: #0a0a08;
+      --bg2: #111110;
+      --bg3: #181816;
+      --bg4: #202020;
+      --border: #282826;
+      --amber: #e8a94a;
+      --amber-dim: #9e6e2a;
+      --amber-lo: #4a3010;
+      --green: #56c47e;
+      --green-dim: #244d32;
+      --red: #d95050;
+      --red-dim: #5a2222;
+      --blue: #5898d8;
+      --blue-dim: #1e3a5c;
+      --purple: #9878d8;
+      --purple-dim: #2e1e4a;
+      --muted: #484844;
+      --text: #bab8a8;
+      --text-dim: #606058;
+    }
+
+    html,
+    body {
+      height: 100%;
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 12px;
+      line-height: 1.5;
+      overflow: hidden;
+    }
+
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(255, 255, 255, .012) 2px, rgba(255, 255, 255, .012) 4px);
+      pointer-events: none;
+      z-index: 9999;
+    }
+
+    /* ── TOPBAR ── */
+    #topbar {
+      height: 38px;
+      background: var(--bg2);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      padding: 0 14px;
+      gap: 12px;
+      flex-shrink: 0;
+    }
+
+    .logo {
+      font-size: 14px;
+      font-weight: 700;
+      letter-spacing: .08em;
+      color: var(--amber);
+      white-space: nowrap;
+    }
+
+    .logo span {
+      color: var(--muted);
+      font-weight: 300;
+    }
+
+    .vsep {
+      width: 1px;
+      height: 16px;
+      background: var(--border);
+      flex-shrink: 0;
+    }
+
+    .pill {
+      font-size: 10px;
+      padding: 2px 7px;
+      border-radius: 3px;
+      border: 1px solid var(--border);
+      color: var(--text-dim);
+      background: var(--bg3);
+      white-space: nowrap;
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      flex-shrink: 0;
+    }
+
+    .dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--muted);
+      flex-shrink: 0;
+    }
+
+    .dot.on {
+      background: var(--green);
+      box-shadow: 0 0 5px var(--green-dim);
+    }
+
+    .dot.ws {
+      background: var(--amber);
+      box-shadow: 0 0 5px var(--amber-dim);
+    }
+
+    .dot.off {
+      background: var(--red);
+      box-shadow: 0 0 5px var(--red-dim);
+    }
+
+    #role-badge {
+      font-size: 10px;
+      padding: 2px 8px;
+      border-radius: 3px;
+      font-weight: 600;
+      letter-spacing: .05em;
+      flex-shrink: 0;
+    }
+
+    #role-badge.operator {
+      background: var(--amber-lo);
+      color: var(--amber);
+      border: 1px solid var(--amber-dim);
+    }
+
+    #role-badge.observer {
+      background: var(--purple-dim);
+      color: var(--purple);
+      border: 1px solid var(--purple-dim);
+    }
+
+    #role-badge.none {
+      background: var(--red-dim);
+      color: var(--red);
+      border: 1px solid var(--red-dim);
+    }
+
+    .topbar-right {
+      margin-left: auto;
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .tbtn {
+      height: 24px;
+      padding: 0 9px;
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--text-dim);
+      font-family: inherit;
+      font-size: 10px;
+      letter-spacing: .04em;
+      cursor: pointer;
+      border-radius: 3px;
+      transition: all .15s;
+    }
+
+    .tbtn:hover {
+      border-color: var(--amber-dim);
+      color: var(--amber);
+    }
+
+    /* ── LAYOUT ── */
+    #app {
+      display: flex;
+      height: calc(100vh - 38px);
+    }
+
+    /* ── LEFT PANE ── */
+    #left-pane {
+      width: 300px;
+      flex-shrink: 0;
+      background: var(--bg2);
+      border-right: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    .pane-header {
+      padding: 9px 12px;
+      border-bottom: 1px solid var(--border);
+      font-size: 10px;
+      letter-spacing: .1em;
+      text-transform: uppercase;
+      color: var(--text-dim);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-shrink: 0;
+      gap: 8px;
+    }
+
+    .ph-btn {
+      font-size: 9px;
+      cursor: pointer;
+      color: var(--muted);
+      letter-spacing: .05em;
+      transition: color .15s;
+      flex-shrink: 0;
+    }
+
+    .ph-btn:hover {
+      color: var(--amber);
+    }
+
+    .ph-btn.danger:hover {
+      color: var(--red);
+    }
+
+    #target-filter {
+      background: var(--bg3);
+      border: 1px solid var(--border);
+      color: var(--text);
+      font-family: inherit;
+      font-size: 10px;
+      padding: 2px 5px;
+      border-radius: 3px;
+      cursor: pointer;
+      max-width: 130px;
+    }
+
+    #target-filter:focus {
+      outline: none;
+      border-color: var(--amber-dim);
+    }
+
+    #card-list {
+      flex: 1;
+      overflow-y: auto;
+      padding: 4px 0;
+    }
+
+    #card-list::-webkit-scrollbar {
+      width: 3px;
+    }
+
+    #card-list::-webkit-scrollbar-thumb {
+      background: var(--border);
+      border-radius: 2px;
+    }
+
+    .card-item {
+      padding: 8px 12px;
+      cursor: pointer;
+      border-left: 2px solid transparent;
+      transition: background .1s, border-color .1s;
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+    }
+
+    .card-item:hover {
+      background: var(--bg3);
+      border-left-color: var(--amber-dim);
+    }
+
+    .card-item.selected {
+      background: var(--bg3);
+      border-left-color: var(--amber);
+    }
+
+    .card-item.hidden {
+      display: none;
+    }
+
+    .ci-top {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+    }
+
+    .ci-prompt {
+      color: var(--amber-dim);
+      font-size: 11px;
+      flex-shrink: 0;
+    }
+
+    .ci-cmd {
+      font-size: 12px;
+      color: var(--amber);
+      font-weight: 600;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      flex: 1;
+      min-width: 0;
+    }
+
+    .ci-badge {
+      font-size: 9px;
+      padding: 1px 5px;
+      border-radius: 2px;
+      flex-shrink: 0;
+    }
+
+    .ci-badge.run {
+      background: var(--blue-dim);
+      color: #70a8e8;
+    }
+
+    .ci-badge.ok {
+      background: var(--green-dim);
+      color: #70d898;
+    }
+
+    .ci-badge.err {
+      background: var(--red-dim);
+      color: #e08080;
+    }
+
+    .ci-badge.local {
+      background: var(--bg4);
+      color: var(--text-dim);
+    }
+
+    .ci-meta {
+      font-size: 10px;
+      color: var(--text-dim);
+    }
+
+    /* connections sub-panel */
+    #conn-panel {
+      border-top: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+
+    .conn-toggle {
+      padding: 8px 12px;
+      font-size: 10px;
+      letter-spacing: .1em;
+      text-transform: uppercase;
+      color: var(--text-dim);
+      border-bottom: 1px solid var(--border);
+      cursor: pointer;
+      user-select: none;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .conn-toggle:hover {
+      color: var(--amber);
+    }
+
+    #conn-list {
+      max-height: 160px;
+      overflow-y: auto;
+    }
+
+    .conn-row {
+      padding: 5px 12px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      cursor: pointer;
+      transition: background .1s;
+      border-left: 2px solid transparent;
+    }
+
+    .conn-row:hover {
+      background: var(--bg3);
+    }
+
+    .conn-row.active-conn {
+      border-left-color: var(--amber);
+      background: var(--bg3);
+    }
+
+    .cr-dot {
+      width: 5px;
+      height: 5px;
+      border-radius: 50%;
+      background: var(--green);
+      flex-shrink: 0;
+    }
+
+    .cr-name {
+      font-size: 11px;
+      color: var(--text);
+      flex: 1;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .cr-addr {
+      font-size: 10px;
+      color: var(--text-dim);
+      flex-shrink: 0;
+    }
+
+    .cr-edit {
+      font-size: 10px;
+      color: var(--muted);
+      flex-shrink: 0;
+      cursor: pointer;
+      transition: color .15s;
+      padding: 0 3px;
+    }
+
+    .cr-edit:hover {
+      color: var(--amber);
+    }
+
+    .conn-empty {
+      padding: 8px 12px;
+      font-size: 11px;
+      color: var(--muted);
+    }
+
+    /* ── RIGHT PANE ── */
+    #right-pane {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      min-width: 0;
+    }
+
+    #output-header {
+      padding: 9px 14px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-shrink: 0;
+      min-height: 38px;
+      background: var(--bg2);
+    }
+
+    #output-title {
+      font-size: 12px;
+      color: var(--amber);
+      font-weight: 600;
+      flex: 1;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    #output-meta {
+      font-size: 10px;
+      color: var(--text-dim);
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+
+    #output-body {
+      flex: 1;
+      overflow-y: auto;
+      padding: 14px 16px;
+      font-size: 12px;
+      line-height: 1.7;
+    }
+
+    #output-body::-webkit-scrollbar {
+      width: 3px;
+    }
+
+    #output-body::-webkit-scrollbar-thumb {
+      background: var(--border);
+      border-radius: 2px;
+    }
+
+    /* plain text lines */
+    .out-line {
+      display: block;
+      white-space: pre-wrap;
+      word-break: break-all;
+    }
+
+    .out-line.recv {
+      color: var(--text);
+    }
+
+    .out-line.info {
+      color: var(--blue);
+    }
+
+    .out-line.warn {
+      color: var(--amber);
+    }
+
+    .out-line.err {
+      color: var(--red);
+    }
+
+    .out-line.sys {
+      color: var(--text-dim);
+      font-style: italic;
+    }
+
+    .out-line.help-h {
+      color: var(--amber);
+      font-weight: 600;
+      margin-top: 4px;
+    }
+
+    .out-line.help-c {
+      color: var(--text-dim);
+      padding-left: 16px;
+    }
+
+    /* ── PROCESS TABLE ── */
+    /* width:auto + border-collapse lets columns size to their content.
    Tight columns get width:1px so they collapse to fit their widest cell.
    The COMMAND column is the only one allowed to grow. */
-        .proc-table {
-            width: auto;
-            border-collapse: collapse;
-            font-size: 11px;
-        }
+    .proc-table {
+      width: auto;
+      border-collapse: collapse;
+      font-size: 11px;
+    }
 
-        .proc-table th {
-            color: var(--amber-dim);
-            font-weight: 600;
-            text-align: left;
-            padding: 3px 14px 3px 0;
-            border-bottom: 1px solid var(--border);
-            letter-spacing: .05em;
-            white-space: nowrap;
-        }
+    .proc-table th {
+      color: var(--amber-dim);
+      font-weight: 600;
+      text-align: left;
+      padding: 3px 14px 3px 0;
+      border-bottom: 1px solid var(--border);
+      letter-spacing: .05em;
+      white-space: nowrap;
+    }
 
-        .proc-table td {
-            color: var(--text);
-            padding: 2px 14px 2px 0;
-            white-space: nowrap;
-        }
+    .proc-table td {
+      color: var(--text);
+      padding: 2px 14px 2px 0;
+      white-space: nowrap;
+    }
 
-        .proc-table tr:hover td {
-            background: var(--bg3);
-        }
+    .proc-table tr:hover td {
+      background: var(--bg3);
+    }
 
-        /* tight columns: shrink-wrap to content */
-        .proc-table .col-tight {
-            width: 1px;
-            white-space: nowrap;
-        }
+    /* tight columns: shrink-wrap to content */
+    .proc-table .col-tight {
+      width: 1px;
+      white-space: nowrap;
+    }
 
-        .proc-table .col-pid {
-            color: var(--amber-dim);
-        }
+    .proc-table .col-pid {
+      color: var(--amber-dim);
+    }
 
-        .proc-table .col-user {
-            color: var(--blue);
-        }
+    .proc-table .col-user {
+      color: var(--blue);
+    }
 
-        .proc-table .col-tty {
-            color: var(--text-dim);
-        }
+    .proc-table .col-tty {
+      color: var(--text-dim);
+    }
 
-        .proc-table .col-time {
-            color: var(--text-dim);
-        }
+    .proc-table .col-time {
+      color: var(--text-dim);
+    }
 
-        /* exe column: takes remaining space, truncates with ellipsis */
-        /* exe: unconstrained so content sets the width, but hard-cap very long paths */
-        /* exe column width is set explicitly via colgroup in JS based on actual data */
-        .proc-table .col-exe {
-            overflow: hidden;
-            text-overflow: ellipsis;
-            white-space: nowrap;
-        }
+    /* exe column: takes remaining space, truncates with ellipsis */
+    /* exe: unconstrained so content sets the width, but hard-cap very long paths */
+    /* exe column width is set explicitly via colgroup in JS based on actual data */
+    .proc-table .col-exe {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
 
-        .proc-count {
-            font-size: 10px;
-            color: var(--text-dim);
-            margin-top: 6px;
-        }
+    .proc-count {
+      font-size: 10px;
+      color: var(--text-dim);
+      margin-top: 6px;
+    }
 
-        /* ── CHECKIN PANEL ── */
-        .checkin-grid {
-            display: grid;
-            grid-template-columns: max-content 1fr;
-            gap: 3px 16px;
-            font-size: 12px;
-        }
+    /* ── CHECKIN PANEL ── */
+    .checkin-grid {
+      display: grid;
+      grid-template-columns: max-content 1fr;
+      gap: 3px 16px;
+      font-size: 12px;
+    }
 
-        .ck-label {
-            color: var(--amber-dim);
-            font-weight: 600;
-            white-space: nowrap;
-        }
+    .ck-label {
+      color: var(--amber-dim);
+      font-weight: 600;
+      white-space: nowrap;
+    }
 
-        .ck-value {
-            color: var(--text);
-        }
+    .ck-value {
+      color: var(--text);
+    }
 
-        #sozo-splash {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            height: 100%;
-            gap: 6px;
-            text-align: center;
-            pointer-events: none;
-        }
+    #sozo-splash {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100%;
+      gap: 6px;
+      text-align: center;
+      pointer-events: none;
+    }
 
-        #sozo-splash .big {
-            font-size: 24px;
-            color: var(--border);
-            font-weight: 700;
-            letter-spacing: .2em;
-        }
+    #sozo-splash .big {
+      font-size: 24px;
+      color: var(--border);
+      font-weight: 700;
+      letter-spacing: .2em;
+    }
 
-        #sozo-splash .sub {
-            font-size: 11px;
-            color: var(--muted);
-        }
+    #sozo-splash .sub {
+      font-size: 11px;
+      color: var(--muted);
+    }
 
-        /* ── INPUT BAR ── */
-        #input-bar {
-            border-top: 1px solid var(--border);
-            background: var(--bg2);
-            padding: 9px 14px;
-            flex-shrink: 0;
-        }
+    /* ── INPUT BAR ── */
+    #input-bar {
+      border-top: 1px solid var(--border);
+      background: var(--bg2);
+      padding: 9px 14px;
+      flex-shrink: 0;
+    }
 
-        #target-row {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            margin-bottom: 7px;
-        }
+    #target-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 7px;
+    }
 
-        #target-row label {
-            font-size: 10px;
-            color: var(--text-dim);
-        }
+    #target-row label {
+      font-size: 10px;
+      color: var(--text-dim);
+    }
 
-        #target-select {
-            background: var(--bg3);
-            border: 1px solid var(--border);
-            color: var(--text);
-            font-family: inherit;
-            font-size: 10px;
-            padding: 2px 6px;
-            border-radius: 3px;
-            cursor: pointer;
-        }
+    #target-select {
+      background: var(--bg3);
+      border: 1px solid var(--border);
+      color: var(--text);
+      font-family: inherit;
+      font-size: 10px;
+      padding: 2px 6px;
+      border-radius: 3px;
+      cursor: pointer;
+    }
 
-        #target-select:focus {
-            outline: none;
-            border-color: var(--amber-dim);
-        }
+    #target-select:focus {
+      outline: none;
+      border-color: var(--amber-dim);
+    }
 
-        #cmd-row {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
+    #cmd-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
 
-        .ps {
-            color: var(--amber-dim);
-            font-size: 13px;
-            flex-shrink: 0;
-        }
+    .ps {
+      color: var(--amber-dim);
+      font-size: 13px;
+      flex-shrink: 0;
+    }
 
-        #cmd-input {
-            flex: 1;
-            background: transparent;
-            border: none;
-            outline: none;
-            color: var(--amber);
-            font-family: inherit;
-            font-size: 12px;
-            caret-color: var(--amber);
-        }
+    #cmd-input {
+      flex: 1;
+      background: transparent;
+      border: none;
+      outline: none;
+      color: var(--amber);
+      font-family: inherit;
+      font-size: 12px;
+      caret-color: var(--amber);
+    }
 
-        #cmd-input::placeholder {
-            color: var(--muted);
-            font-weight: 300;
-        }
+    #cmd-input::placeholder {
+      color: var(--muted);
+      font-weight: 300;
+    }
 
-        #cmd-input:disabled {
-            opacity: .35;
-        }
+    #cmd-input:disabled {
+      opacity: .35;
+    }
 
-        .sbtn {
-            height: 26px;
-            padding: 0 11px;
-            background: var(--amber-lo);
-            border: 1px solid var(--amber-dim);
-            color: var(--amber);
-            font-family: inherit;
-            font-size: 10px;
-            letter-spacing: .04em;
-            cursor: pointer;
-            border-radius: 3px;
-            transition: all .15s;
-            flex-shrink: 0;
-        }
+    .sbtn {
+      height: 26px;
+      padding: 0 11px;
+      background: var(--amber-lo);
+      border: 1px solid var(--amber-dim);
+      color: var(--amber);
+      font-family: inherit;
+      font-size: 10px;
+      letter-spacing: .04em;
+      cursor: pointer;
+      border-radius: 3px;
+      transition: all .15s;
+      flex-shrink: 0;
+    }
 
-        .sbtn:hover {
-            background: var(--amber-dim);
-            color: #fff;
-        }
+    .sbtn:hover {
+      background: var(--amber-dim);
+      color: #fff;
+    }
 
-        .sbtn:disabled {
-            opacity: .35;
-            cursor: not-allowed;
-        }
+    .sbtn:disabled {
+      opacity: .35;
+      cursor: not-allowed;
+    }
 
-        .hint-bar {
-            display: flex;
-            gap: 14px;
-            margin-top: 5px;
-            flex-wrap: wrap;
-        }
+    .hint-bar {
+      display: flex;
+      gap: 14px;
+      margin-top: 5px;
+      flex-wrap: wrap;
+    }
 
-        .hint {
-            font-size: 10px;
-            color: var(--text-dim);
-            display: flex;
-            gap: 3px;
-            align-items: center;
-        }
+    .hint {
+      font-size: 10px;
+      color: var(--text-dim);
+      display: flex;
+      gap: 3px;
+      align-items: center;
+    }
 
-        .key {
-            background: var(--bg4);
-            border: 1px solid var(--border);
-            border-radius: 2px;
-            padding: 0 4px;
-            font-size: 9px;
-            color: var(--muted);
-        }
+    .key {
+      background: var(--bg4);
+      border: 1px solid var(--border);
+      border-radius: 2px;
+      padding: 0 4px;
+      font-size: 9px;
+      color: var(--muted);
+    }
 
-        body.observer #input-bar {
-            display: none;
-        }
+    body.observer #input-bar {
+      display: none;
+    }
 
-        /* ── RENAME POPUP ── */
-        #rename-popup {
-            position: absolute;
-            background: var(--bg2);
-            border: 1px solid var(--amber-dim);
-            border-radius: 5px;
-            padding: 12px;
-            z-index: 600;
-            display: none;
-            box-shadow: 0 6px 24px rgba(0, 0, 0, .7);
-            width: 240px;
-        }
+    /* ── RENAME POPUP ── */
+    #rename-popup {
+      position: absolute;
+      background: var(--bg2);
+      border: 1px solid var(--amber-dim);
+      border-radius: 5px;
+      padding: 12px;
+      z-index: 600;
+      display: none;
+      box-shadow: 0 6px 24px rgba(0, 0, 0, .7);
+      width: 240px;
+    }
 
-        #rename-popup.open {
-            display: block;
-        }
+    #rename-popup.open {
+      display: block;
+    }
 
-        #rename-popup label {
-            font-size: 10px;
-            color: var(--text-dim);
-            display: block;
-            margin-bottom: 5px;
-        }
+    #rename-popup label {
+      font-size: 10px;
+      color: var(--text-dim);
+      display: block;
+      margin-bottom: 5px;
+    }
 
-        #rename-input {
-            width: 100%;
-            background: var(--bg3);
-            border: 1px solid var(--border);
-            color: var(--amber);
-            font-family: inherit;
-            font-size: 12px;
-            padding: 5px 8px;
-            border-radius: 3px;
-            outline: none;
-        }
+    #rename-input {
+      width: 100%;
+      background: var(--bg3);
+      border: 1px solid var(--border);
+      color: var(--amber);
+      font-family: inherit;
+      font-size: 12px;
+      padding: 5px 8px;
+      border-radius: 3px;
+      outline: none;
+    }
 
-        #rename-input:focus {
-            border-color: var(--amber-dim);
-        }
+    #rename-input:focus {
+      border-color: var(--amber-dim);
+    }
 
-        .rp-actions {
-            display: flex;
-            gap: 6px;
-            margin-top: 8px;
-        }
+    .rp-actions {
+      display: flex;
+      gap: 6px;
+      margin-top: 8px;
+    }
 
-        .rpbtn {
-            flex: 1;
-            height: 24px;
-            font-family: inherit;
-            font-size: 10px;
-            cursor: pointer;
-            border-radius: 3px;
-            border: 1px solid var(--border);
-            background: transparent;
-            color: var(--text-dim);
-            transition: all .15s;
-        }
+    .rpbtn {
+      flex: 1;
+      height: 24px;
+      font-family: inherit;
+      font-size: 10px;
+      cursor: pointer;
+      border-radius: 3px;
+      border: 1px solid var(--border);
+      background: transparent;
+      color: var(--text-dim);
+      transition: all .15s;
+    }
 
-        .rpbtn:hover {
-            border-color: var(--amber-dim);
-            color: var(--amber);
-        }
+    .rpbtn:hover {
+      border-color: var(--amber-dim);
+      color: var(--amber);
+    }
 
-        .rpbtn.primary {
-            border-color: var(--amber-dim);
-            color: var(--amber);
-            background: var(--amber-lo);
-        }
+    .rpbtn.primary {
+      border-color: var(--amber-dim);
+      color: var(--amber);
+      background: var(--amber-lo);
+    }
 
-        /* ── LOG PANEL ── */
-        #log-panel {
-            position: absolute;
-            right: 0;
-            top: 38px;
-            width: 400px;
-            height: calc(100vh - 38px);
-            background: var(--bg2);
-            border-left: 1px solid var(--border);
-            display: flex;
-            flex-direction: column;
-            transform: translateX(100%);
-            transition: transform .2s ease;
-            z-index: 200;
-        }
+    /* ── LOG PANEL ── */
+    #log-panel {
+      position: absolute;
+      right: 0;
+      top: 38px;
+      width: 400px;
+      height: calc(100vh - 38px);
+      background: var(--bg2);
+      border-left: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      transform: translateX(100%);
+      transition: transform .2s ease;
+      z-index: 200;
+    }
 
-        #log-panel.open {
-            transform: translateX(0);
-        }
+    #log-panel.open {
+      transform: translateX(0);
+    }
 
-        .log-hdr {
-            padding: 9px 13px;
-            border-bottom: 1px solid var(--border);
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            font-size: 10px;
-            letter-spacing: .08em;
-            text-transform: uppercase;
-            color: var(--text-dim);
-            flex-shrink: 0;
-        }
+    .log-hdr {
+      padding: 9px 13px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 10px;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+      color: var(--text-dim);
+      flex-shrink: 0;
+    }
 
-        #raw-log {
-            flex: 1;
-            overflow-y: auto;
-            padding: 9px 13px;
-            font-size: 10px;
-            line-height: 1.7;
-        }
+    #raw-log {
+      flex: 1;
+      overflow-y: auto;
+      padding: 9px 13px;
+      font-size: 10px;
+      line-height: 1.7;
+    }
 
-        #raw-log::-webkit-scrollbar {
-            width: 3px;
-        }
+    #raw-log::-webkit-scrollbar {
+      width: 3px;
+    }
 
-        .rl {
-            display: block;
-            white-space: pre-wrap;
-            word-break: break-all;
-            margin-bottom: 1px;
-        }
+    .rl {
+      display: block;
+      white-space: pre-wrap;
+      word-break: break-all;
+      margin-bottom: 1px;
+    }
 
-        .rl-ts {
-            color: var(--muted);
-        }
+    .rl-ts {
+      color: var(--muted);
+    }
 
-        .rl-tag {
-            padding: 0 4px;
-            border-radius: 2px;
-            font-size: 9px;
-            margin: 0 3px;
-        }
+    .rl-tag {
+      padding: 0 4px;
+      border-radius: 2px;
+      font-size: 9px;
+      margin: 0 3px;
+    }
 
-        .rl-tag.conn {
-            background: var(--green-dim);
-            color: #70d898;
-        }
+    .rl-tag.conn {
+      background: var(--green-dim);
+      color: #70d898;
+    }
 
-        .rl-tag.disc {
-            background: var(--red-dim);
-            color: #e08080;
-        }
+    .rl-tag.disc {
+      background: var(--red-dim);
+      color: #e08080;
+    }
 
-        .rl-tag.recv {
-            background: var(--amber-lo);
-            color: var(--amber);
-        }
+    .rl-tag.recv {
+      background: var(--amber-lo);
+      color: var(--amber);
+    }
 
-        .rl-tag.checkin {
-            background: var(--blue-dim);
-            color: #70a8e8;
-        }
+    .rl-tag.checkin {
+      background: var(--blue-dim);
+      color: #70a8e8;
+    }
 
-        .rl-tag.log {
-            background: var(--blue-dim);
-            color: #70a8e8;
-        }
+    .rl-tag.log {
+      background: var(--blue-dim);
+      color: #70a8e8;
+    }
 
-        .rl-tag.ack {
-            background: var(--green-dim);
-            color: #70d898;
-        }
+    .rl-tag.ack {
+      background: var(--green-dim);
+      color: #70d898;
+    }
 
-        .rl-tag.err {
-            background: var(--red-dim);
-            color: #e08080;
-        }
+    .rl-tag.err {
+      background: var(--red-dim);
+      color: #e08080;
+    }
 
-        .rl-tag.ws {
-            background: var(--bg4);
-            color: var(--text-dim);
-        }
+    .rl-tag.ws {
+      background: var(--bg4);
+      color: var(--text-dim);
+    }
 
-        .rl-tag.alias {
-            background: var(--purple-dim);
-            color: #c0a0e8;
-        }
+    .rl-tag.alias {
+      background: var(--purple-dim);
+      color: #c0a0e8;
+    }
 
-        .rl-tag.load {
-            background: var(--amber-lo);
-            color: var(--amber);
-        }
+    .rl-tag.load {
+      background: var(--amber-lo);
+      color: var(--amber);
+    }
 
-        .rl-tag.load {
-            background: var(--amber-lo);
-            color: var(--amber);
-        }
+    .rl-tag.load {
+      background: var(--amber-lo);
+      color: var(--amber);
+    }
 
-        #rc-banner {
-            display: none;
-            align-items: center;
-            justify-content: center;
-            gap: 10px;
-            background: var(--red-dim);
-            color: #e08080;
-            font-size: 10px;
-            padding: 5px 14px;
-            border-bottom: 1px solid var(--border);
-            flex-shrink: 0;
-        }
+    #rc-banner {
+      display: none;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      background: var(--red-dim);
+      color: #e08080;
+      font-size: 10px;
+      padding: 5px 14px;
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+    }
 
-        #rc-banner.on {
-            display: flex;
-        }
-    </style>
+    #rc-banner.on {
+      display: flex;
+    }
+  </style>
 </head>
 
 <body>
 
-    <div id="topbar">
-        <span class="logo">sozo<span> // quic</span></span>
-        <div class="vsep"></div>
-        <div class="pill" title="QUIC server status — listening on 0.0.0.0:4443">
-            <div class="dot" id="quic-dot"></div><span id="quic-text">quic offline</span>
+  <div id="topbar">
+    <span class="logo">sozo<span> // quic</span></span>
+    <div class="vsep"></div>
+    <div class="pill" title="QUIC server status — listening on 0.0.0.0:4443">
+      <div class="dot" id="quic-dot"></div><span id="quic-text">quic offline</span>
+    </div>
+    <div class="pill" title="WebSocket connection to bridge — ws://127.0.0.1:8765">
+      <div class="dot" id="ws-dot"></div><span id="ws-text">ws…</span>
+    </div>
+    <div id="role-badge" class="none">—</div>
+    <div class="vsep"></div>
+    <div class="pill"><span id="clients-n">0</span>&nbsp;clients</div>
+    <div class="topbar-right">
+      <button class="tbtn" id="btn-log">log</button>
+    </div>
+  </div>
+
+  <div id="app">
+    <div id="left-pane">
+      <div class="pane-header">
+        <span>commands</span>
+        <select id="target-filter">
+          <option value="all">all targets</option>
+        </select>
+        <span class="ph-btn danger" id="btn-clear">clear</span>
+      </div>
+      <div id="card-list"></div>
+      <div id="conn-panel">
+        <div class="conn-toggle" id="conn-toggle">
+          <span>connections</span><span id="conn-arr">▾</span>
         </div>
-        <div class="pill" title="WebSocket connection to bridge — ws://127.0.0.1:8765">
-            <div class="dot" id="ws-dot"></div><span id="ws-text">ws…</span>
-        </div>
-        <div id="role-badge" class="none">—</div>
-        <div class="vsep"></div>
-        <div class="pill"><span id="clients-n">0</span>&nbsp;clients</div>
-        <div class="topbar-right">
-            <button class="tbtn" id="btn-log">log</button>
-        </div>
+        <div id="conn-list"></div>
+      </div>
     </div>
 
-    <div id="app">
-        <div id="left-pane">
-            <div class="pane-header">
-                <span>commands</span>
-                <select id="target-filter">
-                    <option value="all">all targets</option>
-                </select>
-                <span class="ph-btn danger" id="btn-clear">clear</span>
-            </div>
-            <div id="card-list"></div>
-            <div id="conn-panel">
-                <div class="conn-toggle" id="conn-toggle">
-                    <span>connections</span><span id="conn-arr">▾</span>
-                </div>
-                <div id="conn-list"></div>
-            </div>
+    <div id="right-pane">
+      <div id="rc-banner">
+        <span>⚠ bridge disconnected — retrying…</span>
+        <button class="tbtn" id="btn-rc" style="border-color:var(--red);color:var(--red)">reconnect</button>
+      </div>
+      <div id="output-header">
+        <span id="output-title">sozo</span>
+        <span id="output-meta"></span>
+      </div>
+      <div id="output-body">
+        <div id="sozo-splash">
+          <div class="big">SOZO</div>
+          <div class="sub" id="splash-sub">connecting…</div>
         </div>
-
-        <div id="right-pane">
-            <div id="rc-banner">
-                <span>⚠ bridge disconnected — retrying…</span>
-                <button class="tbtn" id="btn-rc" style="border-color:var(--red);color:var(--red)">reconnect</button>
-            </div>
-            <div id="output-header">
-                <span id="output-title">sozo</span>
-                <span id="output-meta"></span>
-            </div>
-            <div id="output-body">
-                <div id="sozo-splash">
-                    <div class="big">SOZO</div>
-                    <div class="sub" id="splash-sub">connecting…</div>
-                </div>
-            </div>
-            <div id="input-bar">
-                <div id="target-row">
-                    <label>target:</label>
-                    <select id="target-select">
-                        <option value="all">broadcast → all</option>
-                    </select>
-                </div>
-                <div id="cmd-row">
-                    <span class="ps">❯</span>
-                    <input id="cmd-input" type="text" placeholder="command  (? for help)" autocomplete="off"
-                        spellcheck="false" disabled />
-                    <button class="sbtn" id="btn-send" disabled>send ↵</button>
-                </div>
-                <div class="hint-bar">
-                    <span class="hint"><span class="key">↑↓</span> history</span>
-                    <span class="hint"><span class="key">Enter</span> send</span>
-                    <span class="hint"><span class="key">?</span> help</span>
-                    <span class="hint"><span class="key">Ctrl+K</span> focus</span>
-                    <span class="hint"><span class="key">Ctrl+L</span> clear</span>
-                </div>
-            </div>
+      </div>
+      <div id="input-bar">
+        <div id="target-row">
+          <label>target:</label>
+          <select id="target-select">
+            <option value="all">broadcast → all</option>
+          </select>
         </div>
+        <div id="cmd-row">
+          <span class="ps">❯</span>
+          <input id="cmd-input" type="text" placeholder="command  (? for help)" autocomplete="off" spellcheck="false"
+            disabled />
+          <button class="sbtn" id="btn-send" disabled>send ↵</button>
+        </div>
+        <div class="hint-bar">
+          <span class="hint"><span class="key">↑↓</span> history</span>
+          <span class="hint"><span class="key">Enter</span> send</span>
+          <span class="hint"><span class="key">?</span> help</span>
+          <span class="hint"><span class="key">Ctrl+K</span> focus</span>
+          <span class="hint"><span class="key">Ctrl+L</span> clear</span>
+        </div>
+      </div>
     </div>
+  </div>
 
-    <div id="rename-popup">
-        <label>rename connection</label>
-        <input id="rename-input" type="text" placeholder="e.g. prod-agent-1" autocomplete="off" />
-        <div class="rp-actions">
-            <button class="rpbtn" id="rename-cancel">cancel</button>
-            <button class="rpbtn primary" id="rename-ok">rename</button>
-        </div>
+  <div id="rename-popup">
+    <label>rename connection</label>
+    <input id="rename-input" type="text" placeholder="e.g. prod-agent-1" autocomplete="off" />
+    <div class="rp-actions">
+      <button class="rpbtn" id="rename-cancel">cancel</button>
+      <button class="rpbtn primary" id="rename-ok">rename</button>
     </div>
+  </div>
 
-    <div id="log-panel">
-        <div class="log-hdr">
-            <span>event log</span>
-            <span class="ph-btn" id="btn-close-log">✕ close</span>
-        </div>
-        <div id="raw-log"></div>
+  <div id="log-panel">
+    <div class="log-hdr">
+      <span>event log</span>
+      <span class="ph-btn" id="btn-close-log">✕ close</span>
     </div>
+    <div id="raw-log"></div>
+  </div>
 
-    <script>
-        // ─────────────────────────────────────────────────────────────────────────────
-        // COMMANDS  — client-side registry.
-        // help/? are handled locally. Everything else is sent to the agent.
-        // The registry is informational — unknown verbs are still forwarded.
-        // ─────────────────────────────────────────────────────────────────────────────
-        const COMMANDS = [
-            { name: "help", aliases: ["?"], help: "Show this help (local only)", module: null },
-            { name: "ps", aliases: [], help: "List running processes", module: null },
-            { name: "netstat", aliases: [], help: "Show network connections", module: null },
-            { name: "ls", aliases: [], help: "List directory  [path]", module: null },
-            // file_ops module — loaded on first use from ./modules/file_ops.so
-            { name: "cat", aliases: [], help: "Print file contents  <path>", module: "file_ops" },
-            { name: "copy", aliases: [], help: "Copy file  <src> <dst>", module: "file_ops" },
-            { name: "remove", aliases: [], help: "Remove a file or directory  <path> [--dir]  (--dir required for directories)", module: "file_ops" },
-            { name: "move", aliases: [], help: "Move / rename a file  <src> <dst>", module: "file_ops" },
-        ];
-        const CMD_MAP = {};
-        COMMANDS.forEach(c => { CMD_MAP[c.name] = c; c.aliases.forEach(a => { CMD_MAP[a] = c; }); });
+  <script>
+    // ─────────────────────────────────────────────────────────────────────────────
+    // COMMANDS  — client-side registry.
+    // help/? are handled locally. Everything else is sent to the agent.
+    // The registry is informational — unknown verbs are still forwarded.
+    // ─────────────────────────────────────────────────────────────────────────────
+    const COMMANDS = [
+      { name: "help", aliases: ["?"], help: "Show this help (local only)", module: null },
+      { name: "ps", aliases: [], help: "List running processes", module: null },
+      { name: "netstat", aliases: [], help: "Show network connections", module: null },
+      { name: "ls", aliases: [], help: "List directory  [path]", module: null },
+      // file_ops module — loaded on first use from ./modules/file_ops.so
+      { name: "cat", aliases: [], help: "Print file contents  <path>", module: "file_ops" },
+      { name: "copy", aliases: [], help: "Copy file  <src> <dst>", module: "file_ops" },
+      { name: "remove", aliases: [], help: "Remove a file or directory  <path> [--dir]  (--dir required for directories)", module: "file_ops" },
+      { name: "move", aliases: [], help: "Move / rename a file  <src> <dst>", module: "file_ops" },
+      { name: "stat", aliases: [], help: "Display file status  <path>", module: "file_ops" },
+    ];
+    const CMD_MAP = {};
+    COMMANDS.forEach(c => { CMD_MAP[c.name] = c; c.aliases.forEach(a => { CMD_MAP[a] = c; }); });
 
-        // ─────────────────────────────────────────────────────────────────────────────
-        // CONFIG
-        // ─────────────────────────────────────────────────────────────────────────────
-        const WS_PORT = 8765;
-        const RECONNECT_MS = 3000;
-        const CMD_TIMEOUT = 15000;
-        const URL_TOKEN = new URLSearchParams(window.location.search).get('token') || '';
+    // ─────────────────────────────────────────────────────────────────────────────
+    // CONFIG
+    // ─────────────────────────────────────────────────────────────────────────────
+    const WS_PORT = 8765;
+    const RECONNECT_MS = 3000;
+    const CMD_TIMEOUT = 15000;
+    const URL_TOKEN = new URLSearchParams(window.location.search).get('token') || '';
 
-        // ─────────────────────────────────────────────────────────────────────────────
-        // STATE
-        // ─────────────────────────────────────────────────────────────────────────────
-        const S = {
-            ws: null,
-            connected: false,
-            role: 'none',
-            quicOnline: false,
-            clients: {},
-            entries: [],
-            entryBySeq: {},
-            entryById: {},
-            selectedId: null,
-            nextId: 1,
-            histPos: -1,
-            pending: {},
-            reconTimer: null,
-            logOpen: false,
-            connOpen: true,
-            replayMode: false,
-            renameTarget: null,
-            filterTarget: 'all',
-            busyTargets: new Set(), // conn ids with a command in-flight
-        };
-        const $ = id => document.getElementById(id);
+    // ─────────────────────────────────────────────────────────────────────────────
+    // STATE
+    // ─────────────────────────────────────────────────────────────────────────────
+    const S = {
+      ws: null,
+      connected: false,
+      role: 'none',
+      quicOnline: false,
+      clients: {},
+      entries: [],
+      entryBySeq: {},
+      entryById: {},
+      selectedId: null,
+      nextId: 1,
+      histPos: -1,
+      pending: {},
+      reconTimer: null,
+      logOpen: false,
+      connOpen: true,
+      replayMode: false,
+      renameTarget: null,
+      filterTarget: 'all',
+      busyTargets: new Set(), // conn ids with a command in-flight
+    };
+    const $ = id => document.getElementById(id);
 
-        // ─────────────────────────────────────────────────────────────────────────────
-        // INPUT STATE  — single source of truth for whether the input is usable.
-        // Call this whenever role, quicOnline, clients, or replayMode changes.
-        // ─────────────────────────────────────────────────────────────────────────────
-        function syncInputState() {
-            const canType = (
-                S.role === 'operator' &&
-                S.connected &&
-                S.quicOnline &&
-                !S.replayMode
-            );
-            const target = $('target-select').value;
-            const targetBusy = target === 'all'
-                ? [...Object.keys(S.clients)].some(id => S.busyTargets.has(id))
-                : S.busyTargets.has(target);
-            const canSend = canType && Object.keys(S.clients).length > 0 && !targetBusy;
-            $('cmd-input').disabled = !canType || targetBusy;
-            $('btn-send').disabled = !canSend;
-            if (canType) $('cmd-input').placeholder = 'command  (? for help)';
-            else if (S.role !== 'operator') $('cmd-input').placeholder = 'read-only session';
-            else if (!S.quicOnline) $('cmd-input').placeholder = 'waiting for quic server…';
-            else if (!Object.keys(S.clients).length) $('cmd-input').placeholder = 'waiting for agent connection…';
-            else if (targetBusy) $('cmd-input').placeholder = 'waiting for response…';
-            else $('cmd-input').placeholder = 'reconnecting…';
-        }
+    // ─────────────────────────────────────────────────────────────────────────────
+    // INPUT STATE  — single source of truth for whether the input is usable.
+    // Call this whenever role, quicOnline, clients, or replayMode changes.
+    // ─────────────────────────────────────────────────────────────────────────────
+    function syncInputState() {
+      const canType = (
+        S.role === 'operator' &&
+        S.connected &&
+        S.quicOnline &&
+        !S.replayMode
+      );
+      const target = $('target-select').value;
+      const targetBusy = target === 'all'
+        ? [...Object.keys(S.clients)].some(id => S.busyTargets.has(id))
+        : S.busyTargets.has(target);
+      const canSend = canType && Object.keys(S.clients).length > 0 && !targetBusy;
+      $('cmd-input').disabled = !canType || targetBusy;
+      $('btn-send').disabled = !canSend;
+      if (canType) $('cmd-input').placeholder = 'command  (? for help)';
+      else if (S.role !== 'operator') $('cmd-input').placeholder = 'read-only session';
+      else if (!S.quicOnline) $('cmd-input').placeholder = 'waiting for quic server…';
+      else if (!Object.keys(S.clients).length) $('cmd-input').placeholder = 'waiting for agent connection…';
+      else if (targetBusy) $('cmd-input').placeholder = 'waiting for response…';
+      else $('cmd-input').placeholder = 'reconnecting…';
+    }
 
-        // ─────────────────────────────────────────────────────────────────────────────
-        // WEBSOCKET
-        // ─────────────────────────────────────────────────────────────────────────────
-        function connect() {
-            setWsDot('connecting');
-            const tok = URL_TOKEN ? `?token=${encodeURIComponent(URL_TOKEN)}` : '';
-            const ws = new WebSocket(`ws://127.0.0.1:${WS_PORT}/${tok}`);
-            S.ws = ws;
-            ws.onopen = () => {
-                clearTimeout(S.reconTimer); S.connected = true;
-                setWsDot('connected'); $('rc-banner').classList.remove('on');
-                rawLog('ws', 'connected');
-            };
-            ws.onmessage = ({ data }) => {
-                let msg; try { msg = JSON.parse(data); } catch { return; }
-                if (msg.type !== 'pong') rawLog(msg.type || '?', data.slice(0, 300));
-                dispatch(msg);
-            };
-            ws.onclose = () => {
-                S.connected = false; S.role = 'none';
-                setWsDot('disconnected'); setRole('none');
-                $('rc-banner').classList.add('on');
-                syncInputState();
-                S.reconTimer = setTimeout(connect, RECONNECT_MS);
-            };
-            ws.onerror = () => rawLog('err', 'WebSocket error');
-        }
-        function wsSend(obj) { if (S.ws?.readyState === WebSocket.OPEN) S.ws.send(JSON.stringify(obj)); }
-        function setWsDot(s) {
-            $('ws-dot').className = 'dot' + (s === 'connected' ? ' on' : s === 'connecting' ? ' ws' : ' off');
-            $('ws-text').textContent = s === 'connected' ? `ws:${WS_PORT}` : s === 'connecting' ? 'connecting…' : 'ws offline';
-        }
+    // ─────────────────────────────────────────────────────────────────────────────
+    // WEBSOCKET
+    // ─────────────────────────────────────────────────────────────────────────────
+    function connect() {
+      setWsDot('connecting');
+      const tok = URL_TOKEN ? `?token=${encodeURIComponent(URL_TOKEN)}` : '';
+      const ws = new WebSocket(`ws://127.0.0.1:${WS_PORT}/${tok}`);
+      S.ws = ws;
+      ws.onopen = () => {
+        clearTimeout(S.reconTimer); S.connected = true;
+        setWsDot('connected'); $('rc-banner').classList.remove('on');
+        rawLog('ws', 'connected');
+      };
+      ws.onmessage = ({ data }) => {
+        let msg; try { msg = JSON.parse(data); } catch { return; }
+        if (msg.type !== 'pong') rawLog(msg.type || '?', data.slice(0, 300));
+        dispatch(msg);
+      };
+      ws.onclose = () => {
+        S.connected = false; S.role = 'none';
+        setWsDot('disconnected'); setRole('none');
+        $('rc-banner').classList.add('on');
+        syncInputState();
+        S.reconTimer = setTimeout(connect, RECONNECT_MS);
+      };
+      ws.onerror = () => rawLog('err', 'WebSocket error');
+    }
+    function wsSend(obj) { if (S.ws?.readyState === WebSocket.OPEN) S.ws.send(JSON.stringify(obj)); }
+    function setWsDot(s) {
+      $('ws-dot').className = 'dot' + (s === 'connected' ? ' on' : s === 'connecting' ? ' ws' : ' off');
+      $('ws-text').textContent = s === 'connected' ? `ws:${WS_PORT}` : s === 'connecting' ? 'connecting…' : 'ws offline';
+    }
 
-        // ─────────────────────────────────────────────────────────────────────────────
-        // DISPATCH
-        // ─────────────────────────────────────────────────────────────────────────────
-        function dispatch(msg) {
-            switch (msg.type) {
-                case 'hello': onHello(msg); break;
-                case 'replay_start': onReplayStart(); break;
-                case 'replay_end': onReplayEnd(); break;
-                case 'conn': onConn(msg); break;
-                case 'disc': onDisc(msg); break;
-                case 'ack': onAck(msg); break;
-                case 'recv': onRecv(msg); break;
-                case 'checkin': onCheckin(msg); break;
-                case 'log': onLog(msg); break;
-                case 'alias': onAlias(msg); break;
-                case 'load_start': onLoadStart(msg); break;
-                case 'load_result': onLoadResult(msg); break;
-                case 'error': onError(msg); break;
-                case 'pong': break;
-                default: rawLog('?', `unknown: ${msg.type}`);
-            }
-        }
+    // ─────────────────────────────────────────────────────────────────────────────
+    // DISPATCH
+    // ─────────────────────────────────────────────────────────────────────────────
+    function dispatch(msg) {
+      switch (msg.type) {
+        case 'hello': onHello(msg); break;
+        case 'replay_start': onReplayStart(); break;
+        case 'replay_end': onReplayEnd(); break;
+        case 'conn': onConn(msg); break;
+        case 'disc': onDisc(msg); break;
+        case 'ack': onAck(msg); break;
+        case 'recv': onRecv(msg); break;
+        case 'checkin': onCheckin(msg); break;
+        case 'log': onLog(msg); break;
+        case 'alias': onAlias(msg); break;
+        case 'load_start': onLoadStart(msg); break;
+        case 'load_result': onLoadResult(msg); break;
+        case 'error': onError(msg); break;
+        case 'pong': break;
+        default: rawLog('?', `unknown: ${msg.type}`);
+      }
+    }
 
-        function onHello(msg) { setRole(msg.role || 'none'); $('splash-sub').textContent = `${msg.role} · bridge connected`; }
+    function onHello(msg) { setRole(msg.role || 'none'); $('splash-sub').textContent = `${msg.role} · bridge connected`; }
 
-        function onReplayStart() {
-            S.replayMode = true;
-            S.entries.length = 0;
-            Object.keys(S.entryBySeq).forEach(k => delete S.entryBySeq[k]);
-            Object.keys(S.entryById).forEach(k => delete S.entryById[k]);
-            S.selectedId = null; S.nextId = 1; $('card-list').innerHTML = '';
-        }
-        function onReplayEnd() {
-            S.replayMode = false;
-            S.entries.forEach(e => { if (e.status === 'run') e.status = 'ok'; });
-            renderCardList(); updateFilterOptions();
-            if (S.entries.length) selectEntry(S.entries[S.entries.length - 1].id);
+    function onReplayStart() {
+      S.replayMode = true;
+      S.entries.length = 0;
+      Object.keys(S.entryBySeq).forEach(k => delete S.entryBySeq[k]);
+      Object.keys(S.entryById).forEach(k => delete S.entryById[k]);
+      S.selectedId = null; S.nextId = 1; $('card-list').innerHTML = '';
+    }
+    function onReplayEnd() {
+      S.replayMode = false;
+      S.entries.forEach(e => { if (e.status === 'run') e.status = 'ok'; });
+      renderCardList(); updateFilterOptions();
+      if (S.entries.length) selectEntry(S.entries[S.entries.length - 1].id);
+      syncInputState();
+    }
+
+    function onConn(msg) {
+      S.clients[msg.id] = { addr: msg.addr, alpn: msg.alpn, alias: msg.alias || null };
+      updateClientsCount(); renderConnList(); updateTargetSelects();
+      syncInputState();
+    }
+    function onDisc(msg) {
+      delete S.clients[msg.id];
+      S.busyTargets.delete(msg.id);  // clear any stuck busy state on disconnect
+      updateClientsCount(); renderConnList(); updateTargetSelects();
+      syncInputState();
+    }
+
+    // ── ack → create entry ───────────────────────────────────────────────────────
+    function onAck(msg) {
+      const id = S.nextId++, tl = resolveTargetLabel(msg.targets || []);
+      const entry = {
+        id, seq: msg.seq, cmd: msg.cmd || '?', ts: tsNow(),
+        targetIds: msg.targets || [], targetLabel: tl,
+        status: 'run', lines: [{ text: `# → ${tl}`, cls: 'info' }],
+        structuredView: null,   // set by renderer when recv arrives
+        doneTimer: null,
+      };
+      S.entries.push(entry);
+      S.entryBySeq[msg.seq] = entry; S.entryById[id] = entry; S.pending[msg.seq] = entry;
+      if (!S.replayMode) {
+        // Mark target(s) busy so the input locks until recv arrives
+        (msg.targets || []).forEach(id => S.busyTargets.add(id));
+        syncInputState();
+        addCardItem(entry); selectEntry(id); updateFilterOptions();
+        entry.doneTimer = setTimeout(() => {
+          if (S.pending[entry.seq]) {
+            // Timeout — clear busy so operator isn't permanently locked
+            (msg.targets || []).forEach(id => S.busyTargets.delete(id));
+            pushLine(entry, `✗ timeout — no response within ${CMD_TIMEOUT / 1000}s`, 'err');
+            finalizeEntry(entry, 'err');
             syncInputState();
-        }
+          }
+        }, CMD_TIMEOUT);
+      }
+    }
 
-        function onConn(msg) {
-            S.clients[msg.id] = { addr: msg.addr, alpn: msg.alpn, alias: msg.alias || null };
-            updateClientsCount(); renderConnList(); updateTargetSelects();
-            syncInputState();
-        }
-        function onDisc(msg) {
-            delete S.clients[msg.id];
-            S.busyTargets.delete(msg.id);  // clear any stuck busy state on disconnect
-            updateClientsCount(); renderConnList(); updateTargetSelects();
-            syncInputState();
-        }
+    // ── recv → decode and render ─────────────────────────────────────────────────
+    function onRecv(msg) {
+      const entry = msg.seq !== undefined ? S.pending[msg.seq] : null;
+      if (!entry) { rawLog('recv', `unmatched seq=${msg.seq}`); return; }
 
-        // ── ack → create entry ───────────────────────────────────────────────────────
-        function onAck(msg) {
-            const id = S.nextId++, tl = resolveTargetLabel(msg.targets || []);
-            const entry = {
-                id, seq: msg.seq, cmd: msg.cmd || '?', ts: tsNow(),
-                targetIds: msg.targets || [], targetLabel: tl,
-                status: 'run', lines: [{ text: `# → ${tl}`, cls: 'info' }],
-                structuredView: null,   // set by renderer when recv arrives
-                doneTimer: null,
-            };
-            S.entries.push(entry);
-            S.entryBySeq[msg.seq] = entry; S.entryById[id] = entry; S.pending[msg.seq] = entry;
-            if (!S.replayMode) {
-                // Mark target(s) busy so the input locks until recv arrives
-                (msg.targets || []).forEach(id => S.busyTargets.add(id));
-                syncInputState();
-                addCardItem(entry); selectEntry(id); updateFilterOptions();
-                entry.doneTimer = setTimeout(() => {
-                    if (S.pending[entry.seq]) {
-                        // Timeout — clear busy so operator isn't permanently locked
-                        (msg.targets || []).forEach(id => S.busyTargets.delete(id));
-                        pushLine(entry, `✗ timeout — no response within ${CMD_TIMEOUT / 1000}s`, 'err');
-                        finalizeEntry(entry, 'err');
-                        syncInputState();
-                    }
-                }, CMD_TIMEOUT);
+      clearTimeout(entry.doneTimer);
+
+      // Error from agent
+      if (msg.error) {
+        pushLine(entry, `✗ ${msg.error}`, 'err');
+        finalizeEntry(entry, 'err');
+        return;
+      }
+
+      const data = msg.data;
+      if (!data) { finalizeEntry(entry, 'ok'); return; }
+
+      // Check for a decode-level error first
+      if (data.error) {
+        pushLine(entry, `✗ ${data.error}`, 'err');
+        finalizeEntry(entry, 'err');
+        return;
+      }
+
+      // Route to the right renderer based on data.cmd
+      switch (data.cmd) {
+        case 'ps': renderPs(entry, data); break;
+        case 'netstat': renderNetstat(entry, data); break;
+        case 'ls': renderLs(entry, data); break;
+        case 'cat': renderCat(entry, data); break;
+        case 'fileops': renderFileops(entry, data); break;
+        case 'stat': renderStat(entry, data); break;
+        default:
+          pushLine(entry, JSON.stringify(data), 'recv');
+      }
+
+      finalizeEntry(entry, 'ok');
+    }
+
+    // ── checkin → create a dedicated info card ───────────────────────────────────
+    function onCheckin(msg) {
+      const id = S.nextId++;
+      const d = msg.data || {};
+      const name = S.clients[msg.id]?.alias || msg.addr || msg.id;
+      const entry = {
+        id, seq: -id, cmd: `checkin: ${name}`, ts: tsNow(),
+        targetIds: [msg.id], targetLabel: name,
+        status: 'ok', lines: [], structuredView: null, doneTimer: null,
+      };
+      // Build structured checkin view
+      entry.structuredView = { type: 'checkin', data: d };
+      S.entries.push(entry); S.entryById[id] = entry;
+      if (!S.replayMode) { addCardItem(entry); selectEntry(id); updateFilterOptions(); }
+    }
+
+    function onLog(msg) {
+      if (msg.msg?.includes('listening')) {
+        S.quicOnline = true;
+        $('quic-dot').className = 'dot on';
+        $('quic-text').textContent = 'quic listening';
+        $('quic-dot').parentElement.title = 'QUIC server bound — 0.0.0.0:4443, ALPN: sozo, mTLS on';
+        syncInputState();
+      }
+    }
+
+    function onAlias(msg) {
+      if (S.clients[msg.id]) S.clients[msg.id].alias = msg.alias;
+      S.entries.forEach(e => {
+        if (e.targetIds?.includes(msg.id)) {
+          e.targetLabel = resolveTargetLabel(e.targetIds);
+          const el = document.getElementById('ci-' + e.id);
+          if (el) el.querySelector('.ci-meta').textContent = `${e.ts} · ${e.targetLabel}`;
+        }
+      });
+      const sel = S.selectedId ? S.entryById[S.selectedId] : null;
+      if (sel?.targetIds?.includes(msg.id)) $('output-meta').textContent = `${sel.ts} · ${resolveTargetLabel(sel.targetIds)}`;
+      renderConnList(); updateTargetSelects(); updateFilterOptions();
+    }
+
+    function onLoadStart(msg) {
+      const entry = msg.seq !== undefined ? S.pending[msg.seq] : null;
+      const line = `loading module '${msg.module_name}' — transferring to agent…`;
+      if (entry) pushLine(entry, line, 'info');
+      rawLog('load', line);
+    }
+
+    function onLoadResult(msg) {
+      const entry = msg.seq !== undefined ? S.pending[msg.seq] : null;
+      if (msg.success) {
+        const line = `module '${msg.module_name}' loaded (${msg.identity}) — retrying command…`;
+        if (entry) pushLine(entry, line, 'info');
+        rawLog('load', line);
+        if (msg.module_name === 'file_ops') {
+          ['cat', 'copy', 'remove', 'move', 'stat'].forEach(name => {
+            if (!CMD_MAP[name]) {
+              const c = { name, aliases: [], help: `${name} — file_ops`, module: 'file_ops' };
+              COMMANDS.push(c); CMD_MAP[name] = c;
             }
+          });
         }
+      } else {
+        const line = `module '${msg.module_name}' failed: ${msg.error}`;
+        if (entry) { pushLine(entry, line, 'err'); finalizeEntry(entry, 'err'); }
+        rawLog('err', line);
+      }
+    }
 
-        // ── recv → decode and render ─────────────────────────────────────────────────
-        function onRecv(msg) {
-            const entry = msg.seq !== undefined ? S.pending[msg.seq] : null;
-            if (!entry) { rawLog('recv', `unmatched seq=${msg.seq}`); return; }
+    function onError(msg) {
+      const entry = msg.seq !== undefined ? S.pending[msg.seq] : null;
+      if (entry) { pushLine(entry, `✗ ${msg.msg}`, 'err'); finalizeEntry(entry, 'err'); }
+      rawLog('err', msg.msg);
+    }
 
-            clearTimeout(entry.doneTimer);
+    // ─────────────────────────────────────────────────────────────────────────────
+    // STRUCTURED RENDERERS
+    // ─────────────────────────────────────────────────────────────────────────────
 
-            // Error from agent
-            if (msg.error) {
-                pushLine(entry, `✗ ${msg.error}`, 'err');
-                finalizeEntry(entry, 'err');
-                return;
-            }
+    function renderPs(entry, data) {
+      const procs = data.processes || [];
+      entry.structuredView = { type: 'ps', processes: procs };
+      entry.lines.push({ text: `${procs.length} processes`, cls: 'info' });
+      if (S.selectedId === entry.id) renderOutputBody(entry);
+    }
 
-            const data = msg.data;
-            if (!data) { finalizeEntry(entry, 'ok'); return; }
+    function renderNetstat(entry, data) {
+      const conns = data.connections || [];
+      entry.structuredView = { type: 'netstat', connections: conns };
+      entry.lines.push({ text: `${conns.length} connections`, cls: 'info' });
+      if (S.selectedId === entry.id) renderOutputBody(entry);
+    }
 
-            // Check for a decode-level error first
-            if (data.error) {
-                pushLine(entry, `✗ ${data.error}`, 'err');
-                finalizeEntry(entry, 'err');
-                return;
-            }
+    function renderLs(entry, data) {
+      const entries = data.entries || [];
+      entry.structuredView = { type: 'ls', entries };
+      entry.lines.push({ text: `${entries.length} entries`, cls: 'info' });
+      if (S.selectedId === entry.id) renderOutputBody(entry);
+    }
 
-            // Route to the right renderer based on data.cmd
-            switch (data.cmd) {
-                case 'ps': renderPs(entry, data); break;
-                case 'netstat': renderNetstat(entry, data); break;
-                case 'ls': renderLs(entry, data); break;
-                case 'cat': renderCat(entry, data); break;
-                case 'fileops': renderFileops(entry, data); break;
-                default:
-                    pushLine(entry, JSON.stringify(data), 'recv');
-            }
+    function renderCat(entry, data) {
+      entry.structuredView = { type: 'cat', content: data.content || '', binary: data.binary || false, size: data.size || 0 };
+      if (data.binary) {
+        entry.lines.push({ text: `binary file · ${fmtSize(data.size || 0)}`, cls: 'warn' });
+      } else {
+        const lines = (data.content || '').split('\n').length;
+        entry.lines.push({ text: `${lines} lines · ${fmtSize(data.size || 0)}`, cls: 'info' });
+      }
+      if (S.selectedId === entry.id) renderOutputBody(entry);
+    }
 
-            finalizeEntry(entry, 'ok');
-        }
+    function renderStat(entry, data) {
+      if (data.error) { pushLine(entry, `✗ ${data.error}`, 'err'); return; }
+      entry.structuredView = { type: 'stat', data };
+      entry.lines.push({ text: `inode ${data.inode} · ${fmtSize(data.size)}`, cls: 'info' });
+      if (S.selectedId === entry.id) renderOutputBody(entry);
+    }
 
-        // ── checkin → create a dedicated info card ───────────────────────────────────
-        function onCheckin(msg) {
-            const id = S.nextId++;
-            const d = msg.data || {};
-            const name = S.clients[msg.id]?.alias || msg.addr || msg.id;
-            const entry = {
-                id, seq: -id, cmd: `checkin: ${name}`, ts: tsNow(),
-                targetIds: [msg.id], targetLabel: name,
-                status: 'ok', lines: [], structuredView: null, doneTimer: null,
-            };
-            // Build structured checkin view
-            entry.structuredView = { type: 'checkin', data: d };
-            S.entries.push(entry); S.entryById[id] = entry;
-            if (!S.replayMode) { addCardItem(entry); selectEntry(id); updateFilterOptions(); }
-        }
+    function renderFileops(entry, data) {
+      entry.structuredView = { type: 'fileops', success: data.success, error: data.error };
+      entry.lines.push({ text: data.success ? '✓ success' : `✗ ${data.error}`, cls: data.success ? 'info' : 'err' });
+      if (S.selectedId === entry.id) renderOutputBody(entry);
+    }
 
-        function onLog(msg) {
-            if (msg.msg?.includes('listening')) {
-                S.quicOnline = true;
-                $('quic-dot').className = 'dot on';
-                $('quic-text').textContent = 'quic listening';
-                $('quic-dot').parentElement.title = 'QUIC server bound — 0.0.0.0:4443, ALPN: sozo, mTLS on';
-                syncInputState();
-            }
-        }
+    // ── DOM builders ─────────────────────────────────────────────────────────────
 
-        function onAlias(msg) {
-            if (S.clients[msg.id]) S.clients[msg.id].alias = msg.alias;
-            S.entries.forEach(e => {
-                if (e.targetIds?.includes(msg.id)) {
-                    e.targetLabel = resolveTargetLabel(e.targetIds);
-                    const el = document.getElementById('ci-' + e.id);
-                    if (el) el.querySelector('.ci-meta').textContent = `${e.ts} · ${e.targetLabel}`;
-                }
-            });
-            const sel = S.selectedId ? S.entryById[S.selectedId] : null;
-            if (sel?.targetIds?.includes(msg.id)) $('output-meta').textContent = `${sel.ts} · ${resolveTargetLabel(sel.targetIds)}`;
-            renderConnList(); updateTargetSelects(); updateFilterOptions();
-        }
+    function buildTasklistDOM(processes) {
+      if (!processes.length) {
+        const p = document.createElement('span');
+        p.className = 'out-line sys'; p.textContent = '(no processes)';
+        return p;
+      }
+      const wrap = document.createElement('div');
 
-        function onLoadStart(msg) {
-            const entry = msg.seq !== undefined ? S.pending[msg.seq] : null;
-            const line = `loading module '${msg.module_name}' — transferring to agent…`;
-            if (entry) pushLine(entry, line, 'info');
-            rawLog('load', line);
-        }
+      // Find the longest exe string in the data so we can size the column exactly.
+      // ch units map 1:1 to character widths in monospace, capped at 255 (agent limit).
+      const maxExeLen = Math.min(
+        255,
+        Math.max('COMMAND'.length, ...processes.map(p => (p.exe || '').length))
+      );
 
-        function onLoadResult(msg) {
-            const entry = msg.seq !== undefined ? S.pending[msg.seq] : null;
-            if (msg.success) {
-                const line = `module '${msg.module_name}' loaded (${msg.identity}) — retrying command…`;
-                if (entry) pushLine(entry, line, 'info');
-                rawLog('load', line);
-                if (msg.module_name === 'file_ops') {
-                    ['cat', 'copy', 'remove', 'move'].forEach(name => {
-                        if (!CMD_MAP[name]) {
-                            const c = { name, aliases: [], help: `${name} — file_ops`, module: 'file_ops' };
-                            COMMANDS.push(c); CMD_MAP[name] = c;
-                        }
-                    });
-                }
-            } else {
-                const line = `module '${msg.module_name}' failed: ${msg.error}`;
-                if (entry) { pushLine(entry, line, 'err'); finalizeEntry(entry, 'err'); }
-                rawLog('err', line);
-            }
-        }
+      const tbl = document.createElement('table');
+      tbl.className = 'proc-table';
 
-        function onError(msg) {
-            const entry = msg.seq !== undefined ? S.pending[msg.seq] : null;
-            if (entry) { pushLine(entry, `✗ ${msg.msg}`, 'err'); finalizeEntry(entry, 'err'); }
-            rawLog('err', msg.msg);
-        }
+      // colgroup gives the browser an explicit width for the exe column so it
+      // doesn't have to guess from the content of visible rows.
+      const colgroup = document.createElement('colgroup');
+      // tight columns: let browser shrink-wrap them
+      ['', '', '', '', ''].forEach(() => {
+        const c = document.createElement('col');
+        colgroup.appendChild(c);
+      });
+      // exe column: explicit ch-based width
+      const exeCol = document.createElement('col');
+      exeCol.style.width = `${maxExeLen + 1}ch`;
+      colgroup.appendChild(exeCol);
+      tbl.appendChild(colgroup);
 
-        // ─────────────────────────────────────────────────────────────────────────────
-        // STRUCTURED RENDERERS
-        // ─────────────────────────────────────────────────────────────────────────────
-
-        function renderPs(entry, data) {
-            const procs = data.processes || [];
-            entry.structuredView = { type: 'ps', processes: procs };
-            entry.lines.push({ text: `${procs.length} processes`, cls: 'info' });
-            if (S.selectedId === entry.id) renderOutputBody(entry);
-        }
-
-        function renderNetstat(entry, data) {
-            const conns = data.connections || [];
-            entry.structuredView = { type: 'netstat', connections: conns };
-            entry.lines.push({ text: `${conns.length} connections`, cls: 'info' });
-            if (S.selectedId === entry.id) renderOutputBody(entry);
-        }
-
-        function renderLs(entry, data) {
-            const entries = data.entries || [];
-            entry.structuredView = { type: 'ls', entries };
-            entry.lines.push({ text: `${entries.length} entries`, cls: 'info' });
-            if (S.selectedId === entry.id) renderOutputBody(entry);
-        }
-
-        function renderCat(entry, data) {
-            entry.structuredView = { type: 'cat', content: data.content || '', binary: data.binary || false, size: data.size || 0 };
-            if (data.binary) {
-                entry.lines.push({ text: `binary file · ${fmtSize(data.size || 0)}`, cls: 'warn' });
-            } else {
-                const lines = (data.content || '').split('\n').length;
-                entry.lines.push({ text: `${lines} lines · ${fmtSize(data.size || 0)}`, cls: 'info' });
-            }
-            if (S.selectedId === entry.id) renderOutputBody(entry);
-        }
-
-        function renderFileops(entry, data) {
-            entry.structuredView = { type: 'fileops', success: data.success, error: data.error };
-            entry.lines.push({ text: data.success ? '✓ success' : `✗ ${data.error}`, cls: data.success ? 'info' : 'err' });
-            if (S.selectedId === entry.id) renderOutputBody(entry);
-        }
-
-        // ── DOM builders ─────────────────────────────────────────────────────────────
-
-        function buildTasklistDOM(processes) {
-            if (!processes.length) {
-                const p = document.createElement('span');
-                p.className = 'out-line sys'; p.textContent = '(no processes)';
-                return p;
-            }
-            const wrap = document.createElement('div');
-
-            // Find the longest exe string in the data so we can size the column exactly.
-            // ch units map 1:1 to character widths in monospace, capped at 255 (agent limit).
-            const maxExeLen = Math.min(
-                255,
-                Math.max('COMMAND'.length, ...processes.map(p => (p.exe || '').length))
-            );
-
-            const tbl = document.createElement('table');
-            tbl.className = 'proc-table';
-
-            // colgroup gives the browser an explicit width for the exe column so it
-            // doesn't have to guess from the content of visible rows.
-            const colgroup = document.createElement('colgroup');
-            // tight columns: let browser shrink-wrap them
-            ['', '', '', '', ''].forEach(() => {
-                const c = document.createElement('col');
-                colgroup.appendChild(c);
-            });
-            // exe column: explicit ch-based width
-            const exeCol = document.createElement('col');
-            exeCol.style.width = `${maxExeLen + 1}ch`;
-            colgroup.appendChild(exeCol);
-            tbl.appendChild(colgroup);
-
-            tbl.innerHTML +=
-                `<thead><tr>
+      tbl.innerHTML +=
+        `<thead><tr>
       <th class="col-tight col-pid">PID</th>
       <th class="col-tight col-pid">PPID</th>
       <th class="col-tight col-user">USER</th>
@@ -1444,51 +1453,51 @@
       <th class="col-tight col-time">STIME</th>
       <th>COMMAND</th>
     </tr></thead>`;
-            const tbody = document.createElement('tbody');
-            processes.forEach(p => {
-                const tr = document.createElement('tr');
-                const dt = new Date(p.stime * 1000).toLocaleTimeString('en-US', { hour12: false });
-                tr.innerHTML =
-                    `<td class="col-tight col-pid">${p.pid}</td>` +
-                    `<td class="col-tight col-pid">${p.ppid}</td>` +
-                    `<td class="col-tight col-user">${esc(p.user)}</td>` +
-                    `<td class="col-tight col-tty">${esc(p.tty)}</td>` +
-                    `<td class="col-tight col-time">${dt}</td>` +
-                    `<td class="col-exe" title="${esc(p.exe)}">${esc(p.exe)}</td>`;
-                tbody.appendChild(tr);
-            });
-            tbl.appendChild(tbody);
-            wrap.appendChild(tbl);
+      const tbody = document.createElement('tbody');
+      processes.forEach(p => {
+        const tr = document.createElement('tr');
+        const dt = new Date(p.stime * 1000).toLocaleTimeString('en-US', { hour12: false });
+        tr.innerHTML =
+          `<td class="col-tight col-pid">${p.pid}</td>` +
+          `<td class="col-tight col-pid">${p.ppid}</td>` +
+          `<td class="col-tight col-user">${esc(p.user)}</td>` +
+          `<td class="col-tight col-tty">${esc(p.tty)}</td>` +
+          `<td class="col-tight col-time">${dt}</td>` +
+          `<td class="col-exe" title="${esc(p.exe)}">${esc(p.exe)}</td>`;
+        tbody.appendChild(tr);
+      });
+      tbl.appendChild(tbody);
+      wrap.appendChild(tbl);
 
-            const count = document.createElement('div');
-            count.className = 'proc-count'; count.textContent = `${processes.length} processes`;
-            wrap.appendChild(count);
-            return wrap;
-        }
+      const count = document.createElement('div');
+      count.className = 'proc-count'; count.textContent = `${processes.length} processes`;
+      wrap.appendChild(count);
+      return wrap;
+    }
 
-        function buildNetstatDOM(connections) {
-            if (!connections.length) {
-                const p = document.createElement('span');
-                p.className = 'out-line sys'; p.textContent = '(no connections)'; return p;
-            }
-            const wrap = document.createElement('div');
+    function buildNetstatDOM(connections) {
+      if (!connections.length) {
+        const p = document.createElement('span');
+        p.className = 'out-line sys'; p.textContent = '(no connections)'; return p;
+      }
+      const wrap = document.createElement('div');
 
-            const maxExeLen = Math.min(64, Math.max('PROCESS'.length, ...connections.map(c => (c.exe || '').length)));
-            const maxUserLen = Math.min(32, Math.max('USER'.length, ...connections.map(c => (c.user || '').length)));
+      const maxExeLen = Math.min(64, Math.max('PROCESS'.length, ...connections.map(c => (c.exe || '').length)));
+      const maxUserLen = Math.min(32, Math.max('USER'.length, ...connections.map(c => (c.user || '').length)));
 
-            const tbl = document.createElement('table');
-            tbl.className = 'proc-table';
+      const tbl = document.createElement('table');
+      tbl.className = 'proc-table';
 
-            const cg = document.createElement('colgroup');
-            // PROTO, LOCAL ADDR, PORT, REMOTE ADDR, PORT, STATE, PID — all tight
-            for (let i = 0; i < 7; i++) { const c = document.createElement('col'); cg.appendChild(c); }
-            // PROCESS
-            const exeC = document.createElement('col'); exeC.style.width = `${maxExeLen + 1}ch`; cg.appendChild(exeC);
-            // USER
-            const usrC = document.createElement('col'); usrC.style.width = `${maxUserLen + 1}ch`; cg.appendChild(usrC);
-            tbl.appendChild(cg);
+      const cg = document.createElement('colgroup');
+      // PROTO, LOCAL ADDR, PORT, REMOTE ADDR, PORT, STATE, PID — all tight
+      for (let i = 0; i < 7; i++) { const c = document.createElement('col'); cg.appendChild(c); }
+      // PROCESS
+      const exeC = document.createElement('col'); exeC.style.width = `${maxExeLen + 1}ch`; cg.appendChild(exeC);
+      // USER
+      const usrC = document.createElement('col'); usrC.style.width = `${maxUserLen + 1}ch`; cg.appendChild(usrC);
+      tbl.appendChild(cg);
 
-            tbl.innerHTML += `<thead><tr>
+      tbl.innerHTML += `<thead><tr>
     <th class="col-tight">PROTO</th>
     <th class="col-tight">LOCAL ADDR</th>
     <th class="col-tight col-pid">PORT</th>
@@ -1500,52 +1509,52 @@
     <th>USER</th>
   </tr></thead>`;
 
-            const tbody = document.createElement('tbody');
-            connections.forEach(c => {
-                const tr = document.createElement('tr');
-                tr.innerHTML =
-                    `<td class="col-tight col-user">${esc(c.proto)}</td>` +
-                    `<td class="col-tight">${esc(c.local_addr)}</td>` +
-                    `<td class="col-tight col-pid">${c.local_port}</td>` +
-                    `<td class="col-tight">${esc(c.remote_addr)}</td>` +
-                    `<td class="col-tight col-pid">${c.remote_port}</td>` +
-                    `<td class="col-tight col-tty">${esc(c.state)}</td>` +
-                    `<td class="col-tight col-pid">${c.pid || '-'}</td>` +
-                    `<td class="col-exe" title="${esc(c.exe)}">${esc(c.exe || '-')}</td>` +
-                    `<td class="col-exe" title="${esc(c.user)}">${esc(c.user || '-')}</td>`;
-                tbody.appendChild(tr);
-            });
-            tbl.appendChild(tbody);
-            wrap.appendChild(tbl);
-            const count = document.createElement('div');
-            count.className = 'proc-count'; count.textContent = `${connections.length} connections`;
-            wrap.appendChild(count);
-            return wrap;
-        }
+      const tbody = document.createElement('tbody');
+      connections.forEach(c => {
+        const tr = document.createElement('tr');
+        tr.innerHTML =
+          `<td class="col-tight col-user">${esc(c.proto)}</td>` +
+          `<td class="col-tight">${esc(c.local_addr)}</td>` +
+          `<td class="col-tight col-pid">${c.local_port}</td>` +
+          `<td class="col-tight">${esc(c.remote_addr)}</td>` +
+          `<td class="col-tight col-pid">${c.remote_port}</td>` +
+          `<td class="col-tight col-tty">${esc(c.state)}</td>` +
+          `<td class="col-tight col-pid">${c.pid || '-'}</td>` +
+          `<td class="col-exe" title="${esc(c.exe)}">${esc(c.exe || '-')}</td>` +
+          `<td class="col-exe" title="${esc(c.user)}">${esc(c.user || '-')}</td>`;
+        tbody.appendChild(tr);
+      });
+      tbl.appendChild(tbody);
+      wrap.appendChild(tbl);
+      const count = document.createElement('div');
+      count.className = 'proc-count'; count.textContent = `${connections.length} connections`;
+      wrap.appendChild(count);
+      return wrap;
+    }
 
-        function buildLsDOM(entries) {
-            if (!entries.length) {
-                const p = document.createElement('span');
-                p.className = 'out-line sys'; p.textContent = '(empty directory)'; return p;
-            }
-            const wrap = document.createElement('div');
+    function buildLsDOM(entries) {
+      if (!entries.length) {
+        const p = document.createElement('span');
+        p.className = 'out-line sys'; p.textContent = '(empty directory)'; return p;
+      }
+      const wrap = document.createElement('div');
 
-            const maxFnLen = Math.min(255, Math.max('NAME'.length, ...entries.map(e => (e.filename || '').split('/').pop().length)));
-            const maxUserLen = Math.min(32, Math.max('USER'.length, ...entries.map(e => (e.user || '').length)));
-            const maxGroupLen = Math.min(32, Math.max('GROUP'.length, ...entries.map(e => (e.group || '').length)));
+      const maxFnLen = Math.min(255, Math.max('NAME'.length, ...entries.map(e => (e.filename || '').split('/').pop().length)));
+      const maxUserLen = Math.min(32, Math.max('USER'.length, ...entries.map(e => (e.user || '').length)));
+      const maxGroupLen = Math.min(32, Math.max('GROUP'.length, ...entries.map(e => (e.group || '').length)));
 
-            const tbl = document.createElement('table');
-            tbl.className = 'proc-table';
+      const tbl = document.createElement('table');
+      tbl.className = 'proc-table';
 
-            const cg = document.createElement('colgroup');
-            // PERMS, INODE, LINKS, CTIME, MTIME, SIZE — tight
-            for (let i = 0; i < 6; i++) { const c = document.createElement('col'); cg.appendChild(c); }
-            const usrC = document.createElement('col'); usrC.style.width = `${maxUserLen + 1}ch`; cg.appendChild(usrC);
-            const grpC = document.createElement('col'); grpC.style.width = `${maxGroupLen + 1}ch`; cg.appendChild(grpC);
-            const fnC = document.createElement('col'); fnC.style.width = `${maxFnLen + 1}ch`; cg.appendChild(fnC);
-            tbl.appendChild(cg);
+      const cg = document.createElement('colgroup');
+      // PERMS, INODE, LINKS, CTIME, MTIME, SIZE — tight
+      for (let i = 0; i < 6; i++) { const c = document.createElement('col'); cg.appendChild(c); }
+      const usrC = document.createElement('col'); usrC.style.width = `${maxUserLen + 1}ch`; cg.appendChild(usrC);
+      const grpC = document.createElement('col'); grpC.style.width = `${maxGroupLen + 1}ch`; cg.appendChild(grpC);
+      const fnC = document.createElement('col'); fnC.style.width = `${maxFnLen + 1}ch`; cg.appendChild(fnC);
+      tbl.appendChild(cg);
 
-            tbl.innerHTML += `<thead><tr>
+      tbl.innerHTML += `<thead><tr>
     <th class="col-tight">PERMS</th>
     <th class="col-tight col-pid">INODE</th>
     <th class="col-tight col-pid">LINKS</th>
@@ -1557,443 +1566,488 @@
     <th>NAME</th>
   </tr></thead>`;
 
-            const fmtTime = ts => new Date(ts * 1000).toLocaleString('en-US', {
-                hour12: false, month: 'short', day: '2-digit', hour: '2-digit', minute: '2-digit'
-            });
+      const fmtTime = ts => new Date(ts * 1000).toLocaleString('en-US', {
+        hour12: false, month: 'short', day: '2-digit', hour: '2-digit', minute: '2-digit'
+      });
 
-            const tbody = document.createElement('tbody');
-            entries.forEach(e => {
-                const name = e.filename.split('/').pop() || e.filename;
-                const display = e.link ? `${name} → ${e.link}` : name;
-                const perms = fmtMode(e.permissions);
-                const size = fmtSize(e.size);
-                const tr = document.createElement('tr');
-                tr.innerHTML =
-                    `<td class="col-tight col-tty">${perms}</td>` +
-                    `<td class="col-tight col-pid">${e.inode}</td>` +
-                    `<td class="col-tight col-pid">${e.link_count}</td>` +
-                    `<td class="col-tight col-time">${fmtTime(e.ctime)}</td>` +
-                    `<td class="col-tight col-time">${fmtTime(e.mtime)}</td>` +
-                    `<td class="col-tight col-pid">${size}</td>` +
-                    `<td class="col-exe">${esc(e.user)}</td>` +
-                    `<td class="col-exe">${esc(e.group)}</td>` +
-                    `<td class="col-exe" title="${esc(e.filename)}">${esc(display)}</td>`;
-                tbody.appendChild(tr);
-            });
-            tbl.appendChild(tbody);
-            wrap.appendChild(tbl);
+      const tbody = document.createElement('tbody');
+      entries.forEach(e => {
+        const name = e.filename.split('/').pop() || e.filename;
+        const display = e.link ? `${name} → ${e.link}` : name;
+        const perms = fmtMode(e.permissions);
+        const size = fmtSize(e.size);
+        const tr = document.createElement('tr');
+        tr.innerHTML =
+          `<td class="col-tight col-tty">${perms}</td>` +
+          `<td class="col-tight col-pid">${e.inode}</td>` +
+          `<td class="col-tight col-pid">${e.link_count}</td>` +
+          `<td class="col-tight col-time">${fmtTime(e.ctime)}</td>` +
+          `<td class="col-tight col-time">${fmtTime(e.mtime)}</td>` +
+          `<td class="col-tight col-pid">${size}</td>` +
+          `<td class="col-exe">${esc(e.user)}</td>` +
+          `<td class="col-exe">${esc(e.group)}</td>` +
+          `<td class="col-exe" title="${esc(e.filename)}">${esc(display)}</td>`;
+        tbody.appendChild(tr);
+      });
+      tbl.appendChild(tbody);
+      wrap.appendChild(tbl);
 
-            const count = document.createElement('div');
-            count.className = 'proc-count'; count.textContent = `${entries.length} entries`;
-            wrap.appendChild(count);
-            return wrap;
+      const count = document.createElement('div');
+      count.className = 'proc-count'; count.textContent = `${entries.length} entries`;
+      wrap.appendChild(count);
+      return wrap;
+    }
+
+    function fmtMode(mode) {
+      // File type character
+      let type = '-';
+      if ((mode & 0o170000) === 0o040000) type = 'd';  // directory
+      else if ((mode & 0o170000) === 0o120000) type = 'l';  // symlink
+      else if ((mode & 0o170000) === 0o060000) type = 'b';  // block device
+      else if ((mode & 0o170000) === 0o020000) type = 'c';  // char device
+      else if ((mode & 0o170000) === 0o010000) type = 'p';  // fifo
+      else if ((mode & 0o170000) === 0o140000) type = 's';  // socket
+
+      // Owner rwx + SUID
+      const ur = (mode & 0o400) ? 'r' : '-';
+      const uw = (mode & 0o200) ? 'w' : '-';
+      const ux = (mode & 0o100)
+        ? ((mode & 0o4000) ? 's' : 'x')   // suid + exec = s, exec only = x
+        : ((mode & 0o4000) ? 'S' : '-');   // suid no exec = S
+
+      // Group rwx + SGID
+      const gr = (mode & 0o040) ? 'r' : '-';
+      const gw = (mode & 0o020) ? 'w' : '-';
+      const gx = (mode & 0o010)
+        ? ((mode & 0o2000) ? 's' : 'x')   // sgid + exec = s, exec only = x
+        : ((mode & 0o2000) ? 'S' : '-');   // sgid no exec = S
+
+      // Other rwx + sticky
+      const or = (mode & 0o004) ? 'r' : '-';
+      const ow = (mode & 0o002) ? 'w' : '-';
+      const ox = (mode & 0o001)
+        ? ((mode & 0o1000) ? 't' : 'x')   // sticky + exec = t, exec only = x
+        : ((mode & 0o1000) ? 'T' : '-');   // sticky no exec = T
+
+      return `${type}${ur}${uw}${ux}${gr}${gw}${gx}${or}${ow}${ox}`;
+    }
+
+    function fmtSize(bytes) {
+      if (bytes < 1024) return `${bytes}`;
+      if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)}K`;
+      if (bytes < 1024 * 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)}M`;
+      return `${(bytes / 1024 / 1024 / 1024).toFixed(1)}G`;
+    }
+
+    function buildCatDOM(content, binary, size) {
+      const wrap = document.createElement('div');
+      if (!content && !size) {
+        const sp = document.createElement('span');
+        sp.className = 'out-line sys'; sp.textContent = '(empty file)';
+        wrap.appendChild(sp); return wrap;
+      }
+      if (binary) {
+        const note = document.createElement('span');
+        note.className = 'out-line warn';
+        note.textContent = `binary file (${fmtSize(size)}) — displaying as latin-1`;
+        wrap.appendChild(note);
+      }
+      const pre = document.createElement('pre');
+      pre.style.cssText = 'color:var(--text);font-family:inherit;font-size:12px;line-height:1.6;white-space:pre-wrap;word-break:break-all;margin-top:6px;';
+      pre.textContent = content;
+      wrap.appendChild(pre);
+      const lineCount = content.split('\n').length - (content.endsWith('\n') ? 1 : 0);
+      const footer = document.createElement('div');
+      footer.className = 'proc-count';
+      footer.textContent = binary
+        ? fmtSize(size)
+        : `${lineCount} line${lineCount !== 1 ? 's' : ''} · ${fmtSize(size)}`;
+      wrap.appendChild(footer);
+      return wrap;
+    }
+
+    function buildStatDOM(d) {
+      if (d.error) {
+        const sp = document.createElement('span');
+        sp.className = 'out-line err'; sp.textContent = `✗ ${d.error}`; return sp;
+      }
+      const wrap = document.createElement('div');
+      wrap.style.cssText = 'font-size:12px;line-height:1.8;';
+
+      // Helpers
+      const fmtTs = (sec, nsec) => {
+        const d = new Date(sec * 1000);
+        const pad = (n, w) => String(n).padStart(w, '0');
+        const tz = -d.getTimezoneOffset();
+        const tzs = (tz >= 0 ? '+' : '-') + pad(Math.floor(Math.abs(tz) / 60), 2) + pad(Math.abs(tz) % 60, 2);
+        return `${d.getFullYear()}-${pad(d.getMonth() + 1, 2)}-${pad(d.getDate(), 2)} ` +
+          `${pad(d.getHours(), 2)}:${pad(d.getMinutes(), 2)}:${pad(d.getSeconds(), 2)}.${pad(nsec, 9)} ${tzs}`;
+      };
+      const major = (dev) => (dev >> 8) & 0xfff;
+      const minor = (dev) => (dev & 0xff) | ((dev >> 12) & ~0xff);
+      const octal = '0' + (d.mode & 0o7777).toString(8).padStart(4, '0');
+      const perms = fmtMode(d.mode);
+
+      // File type label
+      const m = d.mode & 0o170000;
+      const typeLabel = m === 0o040000 ? 'directory' : m === 0o120000 ? 'symbolic link' :
+        m === 0o060000 ? 'block special file' : m === 0o020000 ? 'character special file' :
+          m === 0o010000 ? 'fifo' : m === 0o140000 ? 'socket' : 'regular file';
+
+      const line = (text, cls = '') => {
+        const sp = document.createElement('span');
+        sp.className = 'out-line' + (cls ? ' ' + cls : '');
+        sp.textContent = text;
+        wrap.appendChild(sp);
+      };
+
+      line(`  Size: ${String(d.size).padEnd(16)}Blocks: ${String(d.blocks).padEnd(12)} IO Block: ${String(d.io_block).padEnd(8)} ${typeLabel}`);
+      line(`Device: ${major(d.dev)},${minor(d.dev)}\tInode: ${String(d.inode).padEnd(12)} Links: ${d.nlinks}`);
+      line(`Access: (${octal}/${perms})  Uid: (${String(d.uid).padStart(5)}/${String(d.user).padStart(8)})   Gid: (${String(d.gid).padStart(5)}/${String(d.group).padStart(8)})`);
+      line(`Access: ${fmtTs(d.access, d.access_nsec)}`);
+      line(`Modify: ${fmtTs(d.modify, d.modify_nsec)}`);
+      line(`Change: ${fmtTs(d.change, d.change_nsec)}`);
+      return wrap;
+    }
+
+    function buildFileopsDOM(success, error) {
+      const sp = document.createElement('span');
+      sp.className = 'out-line ' + (success ? 'info' : 'err');
+      sp.textContent = success ? '✓ operation completed successfully' : `✗ ${error}`;
+      return sp;
+    }
+
+    function buildCheckinDOM(d) {
+      const wrap = document.createElement('div');
+      wrap.className = 'checkin-grid';
+      const fields = [
+        ['user', d.user],
+        ['hostname', d.hostname],
+        ['arch', d.arch],
+        ['version', d.version],
+        ['pid', d.pid],
+      ];
+      fields.forEach(([k, v]) => {
+        if (v === undefined || v === null) return;
+        const lbl = document.createElement('span'); lbl.className = 'ck-label'; lbl.textContent = k;
+        const val = document.createElement('span'); val.className = 'ck-value'; val.textContent = String(v).trim();
+        wrap.appendChild(lbl); wrap.appendChild(val);
+      });
+      return wrap;
+    }
+
+    function buildRawDOM(raw) {
+      const sp = document.createElement('span');
+      sp.className = 'out-line recv'; sp.textContent = raw;
+      return sp;
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────────
+    // ENTRY / OUTPUT
+    // ─────────────────────────────────────────────────────────────────────────────
+    function pushLine(entry, text, cls = 'recv') {
+      entry.lines.push({ text, cls });
+      if (S.selectedId === entry.id) appendOutputLine(text, cls);
+    }
+
+    function finalizeEntry(entry, status) {
+      clearTimeout(entry.doneTimer);
+      delete S.pending[entry.seq];
+      entry.status = status;
+      const el = document.getElementById('ci-' + entry.id);
+      if (el) { const b = el.querySelector('.ci-badge'); if (b) { b.className = 'ci-badge ' + status; b.textContent = status; } }
+      // Release busy lock for this entry's targets
+      (entry.targetIds || []).forEach(id => S.busyTargets.delete(id));
+      syncInputState();
+    }
+
+    function selectEntry(id) {
+      S.selectedId = id;
+      document.querySelectorAll('.card-item').forEach(el => el.classList.remove('selected'));
+      const el = document.getElementById('ci-' + id);
+      if (el) el.classList.add('selected');
+      const entry = S.entryById[id];
+      if (!entry) return;
+      renderOutputBody(entry);
+      $('output-title').textContent = entry.cmd;
+      $('output-meta').textContent = entry.status === 'local' ? entry.ts : `${entry.ts} · ${entry.targetLabel}`;
+    }
+
+    function renderOutputBody(entry) {
+      const body = $('output-body');
+      body.innerHTML = '';
+      const splash = $('sozo-splash');
+      if (splash) splash.remove();
+
+      // If we have a structured view, render the rich DOM version
+      if (entry.structuredView) {
+        const sv = entry.structuredView;
+        switch (sv.type) {
+          case 'ps': body.appendChild(buildTasklistDOM(sv.processes)); break;
+          case 'netstat': body.appendChild(buildNetstatDOM(sv.connections)); break;
+          case 'ls': body.appendChild(buildLsDOM(sv.entries)); break;
+          case 'cat': body.appendChild(buildCatDOM(sv.content, sv.binary, sv.size)); break;
+          case 'fileops': body.appendChild(buildFileopsDOM(sv.success, sv.error)); break;
+          case 'stat': body.appendChild(buildStatDOM(sv.data)); break;
+          case 'checkin': body.appendChild(buildCheckinDOM(sv.data)); break;
+          case 'raw': body.appendChild(buildRawDOM(sv.raw)); break;
+          default: renderTextLines(body, entry.lines);
         }
+        return;
+      }
+      renderTextLines(body, entry.lines);
+    }
 
-        function fmtMode(mode) {
-            // File type character
-            let type = '-';
-            if ((mode & 0o170000) === 0o040000) type = 'd';  // directory
-            else if ((mode & 0o170000) === 0o120000) type = 'l';  // symlink
-            else if ((mode & 0o170000) === 0o060000) type = 'b';  // block device
-            else if ((mode & 0o170000) === 0o020000) type = 'c';  // char device
-            else if ((mode & 0o170000) === 0o010000) type = 'p';  // fifo
-            else if ((mode & 0o170000) === 0o140000) type = 's';  // socket
+    function renderTextLines(body, lines) {
+      lines.forEach(({ text, cls }) => {
+        const sp = document.createElement('span');
+        sp.className = 'out-line ' + cls; sp.textContent = text;
+        body.appendChild(sp);
+      });
+      body.scrollTop = body.scrollHeight;
+    }
 
-            // Owner rwx + SUID
-            const ur = (mode & 0o400) ? 'r' : '-';
-            const uw = (mode & 0o200) ? 'w' : '-';
-            const ux = (mode & 0o100)
-                ? ((mode & 0o4000) ? 's' : 'x')   // suid + exec = s, exec only = x
-                : ((mode & 0o4000) ? 'S' : '-');   // suid no exec = S
+    function appendOutputLine(text, cls) {
+      const body = $('output-body');
+      const splash = $('sozo-splash'); if (splash) splash.remove();
+      const sp = document.createElement('span');
+      sp.className = 'out-line ' + cls; sp.textContent = text;
+      body.appendChild(sp); body.scrollTop = body.scrollHeight;
+    }
 
-            // Group rwx + SGID
-            const gr = (mode & 0o040) ? 'r' : '-';
-            const gw = (mode & 0o020) ? 'w' : '-';
-            const gx = (mode & 0o010)
-                ? ((mode & 0o2000) ? 's' : 'x')   // sgid + exec = s, exec only = x
-                : ((mode & 0o2000) ? 'S' : '-');   // sgid no exec = S
+    // ─────────────────────────────────────────────────────────────────────────────
+    // CARD LIST
+    // ─────────────────────────────────────────────────────────────────────────────
+    function addCardItem(entry) {
+      const list = $('card-list');
+      const el = makeCardEl(entry);
+      list.appendChild(el); applyCardFilter(el, entry);
+      list.scrollTop = list.scrollHeight;
+    }
+    function makeCardEl(entry) {
+      const div = document.createElement('div');
+      div.className = 'card-item'; div.id = 'ci-' + entry.id;
+      div.innerHTML =
+        `<div class="ci-top">` +
+        `<span class="ci-prompt">❯</span>` +
+        `<span class="ci-cmd">${esc(entry.cmd)}</span>` +
+        `<span class="ci-badge ${entry.status}">${entry.status}</span>` +
+        `</div>` +
+        `<div class="ci-meta">${esc(entry.ts)}${entry.status !== 'local' ? ' · ' + esc(entry.targetLabel) : ''}</div>`;
+      div.onclick = () => selectEntry(entry.id);
+      return div;
+    }
+    function renderCardList() {
+      const list = $('card-list'); list.innerHTML = '';
+      S.entries.forEach(e => { const el = makeCardEl(e); list.appendChild(el); applyCardFilter(el, e); });
+      list.scrollTop = list.scrollHeight;
+    }
 
-            // Other rwx + sticky
-            const or = (mode & 0o004) ? 'r' : '-';
-            const ow = (mode & 0o002) ? 'w' : '-';
-            const ox = (mode & 0o001)
-                ? ((mode & 0o1000) ? 't' : 'x')   // sticky + exec = t, exec only = x
-                : ((mode & 0o1000) ? 'T' : '-');   // sticky no exec = T
-
-            return `${type}${ur}${uw}${ux}${gr}${gw}${gx}${or}${ow}${ox}`;
+    // ─────────────────────────────────────────────────────────────────────────────
+    // TARGET FILTER
+    // ─────────────────────────────────────────────────────────────────────────────
+    function applyCardFilter(el, entry) {
+      if (S.filterTarget === 'all' || entry.status === 'local') { el.classList.remove('hidden'); return; }
+      el.classList.toggle('hidden', !entry.targetIds?.includes(S.filterTarget));
+    }
+    function applyFilterToAll() {
+      S.entries.forEach(e => { const el = document.getElementById('ci-' + e.id); if (el) applyCardFilter(el, e); });
+      if (S.selectedId) {
+        const el = document.getElementById('ci-' + S.selectedId);
+        if (el?.classList.contains('hidden')) {
+          const first = $('card-list').querySelector('.card-item:not(.hidden)');
+          if (first) selectEntry(parseInt(first.id.replace('ci-', '')));
+          else { S.selectedId = null; $('output-title').textContent = 'sozo'; $('output-meta').textContent = ''; $('output-body').innerHTML = ''; }
         }
+      }
+    }
+    function updateFilterOptions() {
+      const f = $('target-filter'), cur = f.value;
+      while (f.options.length > 1) f.remove(1);
+      Object.entries(S.clients).forEach(([id, c]) => {
+        const o = document.createElement('option'); o.value = id; o.textContent = c.alias || c.addr; f.appendChild(o);
+      });
+      if ([...f.options].some(o => o.value === cur)) f.value = cur;
+    }
+    $('target-filter').addEventListener('change', e => {
+      S.filterTarget = e.target.value; applyFilterToAll();
+      const sel = $('target-select');
+      if ([...sel.options].some(o => o.value === S.filterTarget)) sel.value = S.filterTarget;
+      renderConnList();
+    });
 
-        function fmtSize(bytes) {
-            if (bytes < 1024) return `${bytes}`;
-            if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)}K`;
-            if (bytes < 1024 * 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)}M`;
-            return `${(bytes / 1024 / 1024 / 1024).toFixed(1)}G`;
-        }
-
-        function buildCatDOM(content, binary, size) {
-            const wrap = document.createElement('div');
-            if (!content && !size) {
-                const sp = document.createElement('span');
-                sp.className = 'out-line sys'; sp.textContent = '(empty file)';
-                wrap.appendChild(sp); return wrap;
-            }
-            if (binary) {
-                const note = document.createElement('span');
-                note.className = 'out-line warn';
-                note.textContent = `binary file (${fmtSize(size)}) — displaying as latin-1`;
-                wrap.appendChild(note);
-            }
-            const pre = document.createElement('pre');
-            pre.style.cssText = 'color:var(--text);font-family:inherit;font-size:12px;line-height:1.6;white-space:pre-wrap;word-break:break-all;margin-top:6px;';
-            pre.textContent = content;
-            wrap.appendChild(pre);
-            const lineCount = content.split('\n').length - (content.endsWith('\n') ? 1 : 0);
-            const footer = document.createElement('div');
-            footer.className = 'proc-count';
-            footer.textContent = binary
-                ? fmtSize(size)
-                : `${lineCount} line${lineCount !== 1 ? 's' : ''} · ${fmtSize(size)}`;
-            wrap.appendChild(footer);
-            return wrap;
-        }
-
-        function buildFileopsDOM(success, error) {
-            const sp = document.createElement('span');
-            sp.className = 'out-line ' + (success ? 'info' : 'err');
-            sp.textContent = success ? '✓ operation completed successfully' : `✗ ${error}`;
-            return sp;
-        }
-
-        function buildCheckinDOM(d) {
-            const wrap = document.createElement('div');
-            wrap.className = 'checkin-grid';
-            const fields = [
-                ['user', d.user],
-                ['hostname', d.hostname],
-                ['arch', d.arch],
-                ['version', d.version],
-                ['pid', d.pid],
-            ];
-            fields.forEach(([k, v]) => {
-                if (v === undefined || v === null) return;
-                const lbl = document.createElement('span'); lbl.className = 'ck-label'; lbl.textContent = k;
-                const val = document.createElement('span'); val.className = 'ck-value'; val.textContent = String(v).trim();
-                wrap.appendChild(lbl); wrap.appendChild(val);
-            });
-            return wrap;
-        }
-
-        function buildRawDOM(raw) {
-            const sp = document.createElement('span');
-            sp.className = 'out-line recv'; sp.textContent = raw;
-            return sp;
-        }
-
-        // ─────────────────────────────────────────────────────────────────────────────
-        // ENTRY / OUTPUT
-        // ─────────────────────────────────────────────────────────────────────────────
-        function pushLine(entry, text, cls = 'recv') {
-            entry.lines.push({ text, cls });
-            if (S.selectedId === entry.id) appendOutputLine(text, cls);
-        }
-
-        function finalizeEntry(entry, status) {
-            clearTimeout(entry.doneTimer);
-            delete S.pending[entry.seq];
-            entry.status = status;
-            const el = document.getElementById('ci-' + entry.id);
-            if (el) { const b = el.querySelector('.ci-badge'); if (b) { b.className = 'ci-badge ' + status; b.textContent = status; } }
-            // Release busy lock for this entry's targets
-            (entry.targetIds || []).forEach(id => S.busyTargets.delete(id));
-            syncInputState();
-        }
-
-        function selectEntry(id) {
-            S.selectedId = id;
-            document.querySelectorAll('.card-item').forEach(el => el.classList.remove('selected'));
-            const el = document.getElementById('ci-' + id);
-            if (el) el.classList.add('selected');
-            const entry = S.entryById[id];
-            if (!entry) return;
-            renderOutputBody(entry);
-            $('output-title').textContent = entry.cmd;
-            $('output-meta').textContent = entry.status === 'local' ? entry.ts : `${entry.ts} · ${entry.targetLabel}`;
-        }
-
-        function renderOutputBody(entry) {
-            const body = $('output-body');
-            body.innerHTML = '';
-            const splash = $('sozo-splash');
-            if (splash) splash.remove();
-
-            // If we have a structured view, render the rich DOM version
-            if (entry.structuredView) {
-                const sv = entry.structuredView;
-                switch (sv.type) {
-                    case 'ps': body.appendChild(buildTasklistDOM(sv.processes)); break;
-                    case 'netstat': body.appendChild(buildNetstatDOM(sv.connections)); break;
-                    case 'ls': body.appendChild(buildLsDOM(sv.entries)); break;
-                    case 'cat': body.appendChild(buildCatDOM(sv.content, sv.binary, sv.size)); break;
-                    case 'fileops': body.appendChild(buildFileopsDOM(sv.success, sv.error)); break;
-                    case 'checkin': body.appendChild(buildCheckinDOM(sv.data)); break;
-                    case 'raw': body.appendChild(buildRawDOM(sv.raw)); break;
-                    default: renderTextLines(body, entry.lines);
-                }
-                return;
-            }
-            renderTextLines(body, entry.lines);
-        }
-
-        function renderTextLines(body, lines) {
-            lines.forEach(({ text, cls }) => {
-                const sp = document.createElement('span');
-                sp.className = 'out-line ' + cls; sp.textContent = text;
-                body.appendChild(sp);
-            });
-            body.scrollTop = body.scrollHeight;
-        }
-
-        function appendOutputLine(text, cls) {
-            const body = $('output-body');
-            const splash = $('sozo-splash'); if (splash) splash.remove();
-            const sp = document.createElement('span');
-            sp.className = 'out-line ' + cls; sp.textContent = text;
-            body.appendChild(sp); body.scrollTop = body.scrollHeight;
-        }
-
-        // ─────────────────────────────────────────────────────────────────────────────
-        // CARD LIST
-        // ─────────────────────────────────────────────────────────────────────────────
-        function addCardItem(entry) {
-            const list = $('card-list');
-            const el = makeCardEl(entry);
-            list.appendChild(el); applyCardFilter(el, entry);
-            list.scrollTop = list.scrollHeight;
-        }
-        function makeCardEl(entry) {
-            const div = document.createElement('div');
-            div.className = 'card-item'; div.id = 'ci-' + entry.id;
-            div.innerHTML =
-                `<div class="ci-top">` +
-                `<span class="ci-prompt">❯</span>` +
-                `<span class="ci-cmd">${esc(entry.cmd)}</span>` +
-                `<span class="ci-badge ${entry.status}">${entry.status}</span>` +
-                `</div>` +
-                `<div class="ci-meta">${esc(entry.ts)}${entry.status !== 'local' ? ' · ' + esc(entry.targetLabel) : ''}</div>`;
-            div.onclick = () => selectEntry(entry.id);
-            return div;
-        }
-        function renderCardList() {
-            const list = $('card-list'); list.innerHTML = '';
-            S.entries.forEach(e => { const el = makeCardEl(e); list.appendChild(el); applyCardFilter(el, e); });
-            list.scrollTop = list.scrollHeight;
-        }
-
-        // ─────────────────────────────────────────────────────────────────────────────
-        // TARGET FILTER
-        // ─────────────────────────────────────────────────────────────────────────────
-        function applyCardFilter(el, entry) {
-            if (S.filterTarget === 'all' || entry.status === 'local') { el.classList.remove('hidden'); return; }
-            el.classList.toggle('hidden', !entry.targetIds?.includes(S.filterTarget));
-        }
-        function applyFilterToAll() {
-            S.entries.forEach(e => { const el = document.getElementById('ci-' + e.id); if (el) applyCardFilter(el, e); });
-            if (S.selectedId) {
-                const el = document.getElementById('ci-' + S.selectedId);
-                if (el?.classList.contains('hidden')) {
-                    const first = $('card-list').querySelector('.card-item:not(.hidden)');
-                    if (first) selectEntry(parseInt(first.id.replace('ci-', '')));
-                    else { S.selectedId = null; $('output-title').textContent = 'sozo'; $('output-meta').textContent = ''; $('output-body').innerHTML = ''; }
-                }
-            }
-        }
-        function updateFilterOptions() {
-            const f = $('target-filter'), cur = f.value;
-            while (f.options.length > 1) f.remove(1);
-            Object.entries(S.clients).forEach(([id, c]) => {
-                const o = document.createElement('option'); o.value = id; o.textContent = c.alias || c.addr; f.appendChild(o);
-            });
-            if ([...f.options].some(o => o.value === cur)) f.value = cur;
-        }
-        $('target-filter').addEventListener('change', e => {
-            S.filterTarget = e.target.value; applyFilterToAll();
-            const sel = $('target-select');
-            if ([...sel.options].some(o => o.value === S.filterTarget)) sel.value = S.filterTarget;
-            renderConnList();
-        });
-
-        // ─────────────────────────────────────────────────────────────────────────────
-        // CONNECTIONS
-        // ─────────────────────────────────────────────────────────────────────────────
-        function updateClientsCount() { $('clients-n').textContent = Object.keys(S.clients).length; }
-        function renderConnList() {
-            const list = $('conn-list'), isOp = S.role === 'operator';
-            const entries = Object.entries(S.clients);
-            list.innerHTML = '';
-            if (!entries.length) { list.innerHTML = '<div class="conn-empty">no active connections</div>'; return; }
-            entries.forEach(([id, c]) => {
-                const row = document.createElement('div');
-                row.className = 'conn-row' + (S.filterTarget === id ? ' active-conn' : '');
-                row.innerHTML =
-                    `<div class="cr-dot"></div>` +
-                    `<span class="cr-name">${esc(c.alias || c.addr)}</span>` +
-                    `<span class="cr-addr">${esc(c.alias ? c.addr : id.slice(0, 10))}</span>` +
-                    (isOp ? `<span class="cr-edit" title="rename">✎</span>` : '');
-                row.onclick = e => {
-                    if (e.target.classList.contains('cr-edit')) return;
-                    $('target-filter').value = id; S.filterTarget = id; applyFilterToAll(); renderConnList();
-                    const sel = $('target-select');
-                    if ([...sel.options].some(o => o.value === id)) sel.value = id;
-                };
-                const eb = row.querySelector('.cr-edit');
-                if (eb) eb.onclick = e => { e.stopPropagation(); openRename(id, c.alias || ''); };
-                list.appendChild(row);
-            });
-        }
-        function updateTargetSelects() {
-            const sel = $('target-select'), cur = sel.value;
-            while (sel.options.length > 1) sel.remove(1);
-            Object.entries(S.clients).forEach(([id, c]) => {
-                const o = document.createElement('option'); o.value = id; o.textContent = `→ ${c.alias || c.addr}`; sel.appendChild(o);
-            });
-            if ([...sel.options].some(o => o.value === cur)) sel.value = cur;
-            updateFilterOptions();
-        }
-        function resolveTargetLabel(ids) {
-            if (!ids || !ids.length) return 'all';
-            if (ids.length > 1) return ids.map(id => S.clients[id]?.alias || S.clients[id]?.addr || id.slice(0, 8)).join(', ');
-            const c = S.clients[ids[0]]; return c ? (c.alias || c.addr) : ids[0].slice(0, 10);
-        }
-
-        // ─────────────────────────────────────────────────────────────────────────────
-        // SEND
-        // ─────────────────────────────────────────────────────────────────────────────
-        function sendCommand() {
-            const input = $('cmd-input'), raw = input.value.trim();
-            if (!raw) return;
-            input.value = ''; S.histPos = -1;
-            const verb = raw.split(/\s+/)[0].toLowerCase();
-            if (verb === 'help' || verb === '?') { handleHelp(); return; }
-            if (!S.connected || S.role !== 'operator') return;
-            wsSend({ type: 'cmd', target: $('target-select').value, cmd: raw, seq: (Math.random() * 0xFFFFFF | 0) });
-        }
-
-        function handleHelp() {
-            const id = S.nextId++;
-            const entry = { id, seq: -id, cmd: 'help', ts: tsNow(), targetIds: [], targetLabel: 'local', status: 'local', lines: [], structuredView: null, doneTimer: null };
-            entry.lines.push({ text: 'sozo command reference', cls: 'help-h' });
-            entry.lines.push({ text: 'Commands that require a module will have it loaded transparently on first use.', cls: 'sys' });
-            entry.lines.push({ text: '', cls: 'sys' });
-            COMMANDS.forEach(c => {
-                const al = c.aliases.length ? `  (${c.aliases.join(', ')})` : '';
-                entry.lines.push({ text: c.name + al, cls: 'help-h' });
-                entry.lines.push({ text: c.help, cls: 'help-c' });
-            });
-            entry.lines.push({ text: '', cls: 'sys' });
-            entry.lines.push({ text: 'Commands that require a module will have it loaded transparently on first use.', cls: 'sys' });
-            S.entries.push(entry); S.entryById[id] = entry;
-            addCardItem(entry); selectEntry(id); updateFilterOptions();
-        }
-
-        // ─────────────────────────────────────────────────────────────────────────────
-        // ROLE
-        // ─────────────────────────────────────────────────────────────────────────────
-        function setRole(role) {
-            S.role = role;
-            const b = $('role-badge');
-            b.className = role;
-            b.textContent = role === 'operator' ? '▶ operator' : role === 'observer' ? '◉ observer' : '✕ no auth';
-            document.body.classList.toggle('observer', role === 'observer');
-            syncInputState();
-        }
-
-        // ─────────────────────────────────────────────────────────────────────────────
-        // RENAME
-        // ─────────────────────────────────────────────────────────────────────────────
-        function openRename(id, cur) {
-            S.renameTarget = id; $('rename-input').value = cur;
-            const r = $('rename-popup'), p = $('conn-panel').getBoundingClientRect();
-            r.style.left = (p.left + 8) + 'px'; r.style.bottom = (window.innerHeight - p.top + 4) + 'px'; r.style.top = 'auto';
-            r.classList.add('open'); $('rename-input').focus(); $('rename-input').select();
-        }
-        function closeRename() { $('rename-popup').classList.remove('open'); S.renameTarget = null; }
-        function submitRename() {
-            if (!S.renameTarget) return;
-            wsSend({ type: 'rename', id: S.renameTarget, alias: $('rename-input').value.trim() }); closeRename();
-        }
-        $('rename-ok').onclick = submitRename;
-        $('rename-cancel').onclick = closeRename;
-        $('rename-input').addEventListener('keydown', e => { if (e.key === 'Enter') submitRename(); if (e.key === 'Escape') closeRename(); });
-
-        // ─────────────────────────────────────────────────────────────────────────────
-        // RAW LOG
-        // ─────────────────────────────────────────────────────────────────────────────
-        function rawLog(tag, msg) {
-            const log = $('raw-log'), t = new Date().toLocaleTimeString('en-US', { hour12: false, fractionalSecondDigits: 3 });
-            const line = document.createElement('span'); line.className = 'rl';
-            line.innerHTML = `<span class="rl-ts">${t}</span><span class="rl-tag ${tag}">${tag}</span>${esc(typeof msg === 'string' ? msg : JSON.stringify(msg))}`;
-            log.appendChild(line); log.scrollTop = log.scrollHeight;
-        }
-
-        // ─────────────────────────────────────────────────────────────────────────────
-        // UTILS
-        // ─────────────────────────────────────────────────────────────────────────────
-        function tsNow() { return new Date().toLocaleTimeString('en-US', { hour12: false }); }
-        function esc(s) { return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
-
-        // ─────────────────────────────────────────────────────────────────────────────
-        // KEYBOARD
-        // ─────────────────────────────────────────────────────────────────────────────
-        const cmdInput = $('cmd-input');
-        cmdInput.addEventListener('keydown', e => {
-            if (e.key === 'Enter') { sendCommand(); return; }
-            const cmds = S.entries.filter(en => en.status !== 'local');
-            if (e.key === 'ArrowUp') {
-                e.preventDefault();
-                if (S.histPos < cmds.length - 1) S.histPos++;
-                const c = cmds[cmds.length - 1 - S.histPos];
-                if (c) { cmdInput.value = c.cmd; setTimeout(() => cmdInput.setSelectionRange(cmdInput.value.length, cmdInput.value.length), 0); }
-            }
-            if (e.key === 'ArrowDown') {
-                e.preventDefault();
-                if (S.histPos > 0) { S.histPos--; cmdInput.value = cmds[cmds.length - 1 - S.histPos]?.cmd || ''; }
-                else { S.histPos = -1; cmdInput.value = ''; }
-            }
-        });
-        document.addEventListener('keydown', e => {
-            if (e.ctrlKey && e.key === 'k') { e.preventDefault(); cmdInput.focus(); }
-            if (e.ctrlKey && e.key === 'l') {
-                e.preventDefault();
-                S.entries.length = 0; Object.keys(S.entryBySeq).forEach(k => delete S.entryBySeq[k]); Object.keys(S.entryById).forEach(k => delete S.entryById[k]);
-                S.selectedId = null; S.nextId = 1; $('card-list').innerHTML = ''; $('output-body').innerHTML = '';
-                $('output-title').textContent = 'sozo'; $('output-meta').textContent = '';
-            }
-            if (e.key === 'Escape') closeRename();
-        });
-
-        // ─────────────────────────────────────────────────────────────────────────────
-        // BUTTONS
-        // ─────────────────────────────────────────────────────────────────────────────
-        $('btn-send').onclick = sendCommand;
-        $('btn-rc').onclick = () => { clearTimeout(S.reconTimer); connect(); };
-        $('btn-log').onclick = () => { S.logOpen = !S.logOpen; $('log-panel').classList.toggle('open', S.logOpen); };
-        $('btn-close-log').onclick = () => { S.logOpen = false; $('log-panel').classList.remove('open'); };
-        $('btn-clear').onclick = () => {
-            S.entries.length = 0; Object.keys(S.entryBySeq).forEach(k => delete S.entryBySeq[k]); Object.keys(S.entryById).forEach(k => delete S.entryById[k]);
-            S.selectedId = null; S.nextId = 1; $('card-list').innerHTML = ''; $('output-body').innerHTML = '';
-            $('output-title').textContent = 'sozo'; $('output-meta').textContent = '';
+    // ─────────────────────────────────────────────────────────────────────────────
+    // CONNECTIONS
+    // ─────────────────────────────────────────────────────────────────────────────
+    function updateClientsCount() { $('clients-n').textContent = Object.keys(S.clients).length; }
+    function renderConnList() {
+      const list = $('conn-list'), isOp = S.role === 'operator';
+      const entries = Object.entries(S.clients);
+      list.innerHTML = '';
+      if (!entries.length) { list.innerHTML = '<div class="conn-empty">no active connections</div>'; return; }
+      entries.forEach(([id, c]) => {
+        const row = document.createElement('div');
+        row.className = 'conn-row' + (S.filterTarget === id ? ' active-conn' : '');
+        row.innerHTML =
+          `<div class="cr-dot"></div>` +
+          `<span class="cr-name">${esc(c.alias || c.addr)}</span>` +
+          `<span class="cr-addr">${esc(c.alias ? c.addr : id.slice(0, 10))}</span>` +
+          (isOp ? `<span class="cr-edit" title="rename">✎</span>` : '');
+        row.onclick = e => {
+          if (e.target.classList.contains('cr-edit')) return;
+          $('target-filter').value = id; S.filterTarget = id; applyFilterToAll(); renderConnList();
+          const sel = $('target-select');
+          if ([...sel.options].some(o => o.value === id)) sel.value = id;
         };
-        $('conn-toggle').onclick = () => {
-            S.connOpen = !S.connOpen; $('conn-list').style.display = S.connOpen ? '' : 'none'; $('conn-arr').textContent = S.connOpen ? '▾' : '▸';
-        };
-        document.addEventListener('click', e => {
-            if (!$('rename-popup').contains(e.target) && !e.target.classList.contains('cr-edit')) closeRename();
-        });
-        setInterval(() => { if (S.connected) wsSend({ type: 'ping' }); }, 20000);
+        const eb = row.querySelector('.cr-edit');
+        if (eb) eb.onclick = e => { e.stopPropagation(); openRename(id, c.alias || ''); };
+        list.appendChild(row);
+      });
+    }
+    function updateTargetSelects() {
+      const sel = $('target-select'), cur = sel.value;
+      while (sel.options.length > 1) sel.remove(1);
+      Object.entries(S.clients).forEach(([id, c]) => {
+        const o = document.createElement('option'); o.value = id; o.textContent = `→ ${c.alias || c.addr}`; sel.appendChild(o);
+      });
+      if ([...sel.options].some(o => o.value === cur)) sel.value = cur;
+      updateFilterOptions();
+    }
+    function resolveTargetLabel(ids) {
+      if (!ids || !ids.length) return 'all';
+      if (ids.length > 1) return ids.map(id => S.clients[id]?.alias || S.clients[id]?.addr || id.slice(0, 8)).join(', ');
+      const c = S.clients[ids[0]]; return c ? (c.alias || c.addr) : ids[0].slice(0, 10);
+    }
 
-        if (!URL_TOKEN) $('splash-sub').textContent = 'open with ?token=YOUR_TOKEN';
-        connect();
-    </script>
+    // ─────────────────────────────────────────────────────────────────────────────
+    // SEND
+    // ─────────────────────────────────────────────────────────────────────────────
+    function sendCommand() {
+      const input = $('cmd-input'), raw = input.value.trim();
+      if (!raw) return;
+      input.value = ''; S.histPos = -1;
+      const verb = raw.split(/\s+/)[0].toLowerCase();
+      if (verb === 'help' || verb === '?') { handleHelp(); return; }
+      if (!S.connected || S.role !== 'operator') return;
+      wsSend({ type: 'cmd', target: $('target-select').value, cmd: raw, seq: (Math.random() * 0xFFFFFF | 0) });
+    }
+
+    function handleHelp() {
+      const id = S.nextId++;
+      const entry = { id, seq: -id, cmd: 'help', ts: tsNow(), targetIds: [], targetLabel: 'local', status: 'local', lines: [], structuredView: null, doneTimer: null };
+      entry.lines.push({ text: 'sozo command reference', cls: 'help-h' });
+      entry.lines.push({ text: 'Commands that require a module will have it loaded transparently on first use.', cls: 'sys' });
+      entry.lines.push({ text: '', cls: 'sys' });
+      COMMANDS.forEach(c => {
+        const al = c.aliases.length ? `  (${c.aliases.join(', ')})` : '';
+        entry.lines.push({ text: c.name + al, cls: 'help-h' });
+        entry.lines.push({ text: c.help, cls: 'help-c' });
+      });
+      entry.lines.push({ text: '', cls: 'sys' });
+      entry.lines.push({ text: 'Commands that require a module will have it loaded transparently on first use.', cls: 'sys' });
+      S.entries.push(entry); S.entryById[id] = entry;
+      addCardItem(entry); selectEntry(id); updateFilterOptions();
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────────
+    // ROLE
+    // ─────────────────────────────────────────────────────────────────────────────
+    function setRole(role) {
+      S.role = role;
+      const b = $('role-badge');
+      b.className = role;
+      b.textContent = role === 'operator' ? '▶ operator' : role === 'observer' ? '◉ observer' : '✕ no auth';
+      document.body.classList.toggle('observer', role === 'observer');
+      syncInputState();
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────────
+    // RENAME
+    // ─────────────────────────────────────────────────────────────────────────────
+    function openRename(id, cur) {
+      S.renameTarget = id; $('rename-input').value = cur;
+      const r = $('rename-popup'), p = $('conn-panel').getBoundingClientRect();
+      r.style.left = (p.left + 8) + 'px'; r.style.bottom = (window.innerHeight - p.top + 4) + 'px'; r.style.top = 'auto';
+      r.classList.add('open'); $('rename-input').focus(); $('rename-input').select();
+    }
+    function closeRename() { $('rename-popup').classList.remove('open'); S.renameTarget = null; }
+    function submitRename() {
+      if (!S.renameTarget) return;
+      wsSend({ type: 'rename', id: S.renameTarget, alias: $('rename-input').value.trim() }); closeRename();
+    }
+    $('rename-ok').onclick = submitRename;
+    $('rename-cancel').onclick = closeRename;
+    $('rename-input').addEventListener('keydown', e => { if (e.key === 'Enter') submitRename(); if (e.key === 'Escape') closeRename(); });
+
+    // ─────────────────────────────────────────────────────────────────────────────
+    // RAW LOG
+    // ─────────────────────────────────────────────────────────────────────────────
+    function rawLog(tag, msg) {
+      const log = $('raw-log'), t = new Date().toLocaleTimeString('en-US', { hour12: false, fractionalSecondDigits: 3 });
+      const line = document.createElement('span'); line.className = 'rl';
+      line.innerHTML = `<span class="rl-ts">${t}</span><span class="rl-tag ${tag}">${tag}</span>${esc(typeof msg === 'string' ? msg : JSON.stringify(msg))}`;
+      log.appendChild(line); log.scrollTop = log.scrollHeight;
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────────
+    // UTILS
+    // ─────────────────────────────────────────────────────────────────────────────
+    function tsNow() { return new Date().toLocaleTimeString('en-US', { hour12: false }); }
+    function esc(s) { return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
+
+    // ─────────────────────────────────────────────────────────────────────────────
+    // KEYBOARD
+    // ─────────────────────────────────────────────────────────────────────────────
+    const cmdInput = $('cmd-input');
+    cmdInput.addEventListener('keydown', e => {
+      if (e.key === 'Enter') { sendCommand(); return; }
+      const cmds = S.entries.filter(en => en.status !== 'local');
+      if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        if (S.histPos < cmds.length - 1) S.histPos++;
+        const c = cmds[cmds.length - 1 - S.histPos];
+        if (c) { cmdInput.value = c.cmd; setTimeout(() => cmdInput.setSelectionRange(cmdInput.value.length, cmdInput.value.length), 0); }
+      }
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        if (S.histPos > 0) { S.histPos--; cmdInput.value = cmds[cmds.length - 1 - S.histPos]?.cmd || ''; }
+        else { S.histPos = -1; cmdInput.value = ''; }
+      }
+    });
+    document.addEventListener('keydown', e => {
+      if (e.ctrlKey && e.key === 'k') { e.preventDefault(); cmdInput.focus(); }
+      if (e.ctrlKey && e.key === 'l') {
+        e.preventDefault();
+        S.entries.length = 0; Object.keys(S.entryBySeq).forEach(k => delete S.entryBySeq[k]); Object.keys(S.entryById).forEach(k => delete S.entryById[k]);
+        S.selectedId = null; S.nextId = 1; $('card-list').innerHTML = ''; $('output-body').innerHTML = '';
+        $('output-title').textContent = 'sozo'; $('output-meta').textContent = '';
+      }
+      if (e.key === 'Escape') closeRename();
+    });
+
+    // ─────────────────────────────────────────────────────────────────────────────
+    // BUTTONS
+    // ─────────────────────────────────────────────────────────────────────────────
+    $('btn-send').onclick = sendCommand;
+    $('btn-rc').onclick = () => { clearTimeout(S.reconTimer); connect(); };
+    $('btn-log').onclick = () => { S.logOpen = !S.logOpen; $('log-panel').classList.toggle('open', S.logOpen); };
+    $('btn-close-log').onclick = () => { S.logOpen = false; $('log-panel').classList.remove('open'); };
+    $('btn-clear').onclick = () => {
+      S.entries.length = 0; Object.keys(S.entryBySeq).forEach(k => delete S.entryBySeq[k]); Object.keys(S.entryById).forEach(k => delete S.entryById[k]);
+      S.selectedId = null; S.nextId = 1; $('card-list').innerHTML = ''; $('output-body').innerHTML = '';
+      $('output-title').textContent = 'sozo'; $('output-meta').textContent = '';
+    };
+    $('conn-toggle').onclick = () => {
+      S.connOpen = !S.connOpen; $('conn-list').style.display = S.connOpen ? '' : 'none'; $('conn-arr').textContent = S.connOpen ? '▾' : '▸';
+    };
+    document.addEventListener('click', e => {
+      if (!$('rename-popup').contains(e.target) && !e.target.classList.contains('cr-edit')) closeRename();
+    });
+    setInterval(() => { if (S.connected) wsSend({ type: 'ping' }); }, 20000);
+
+    if (!URL_TOKEN) $('splash-sub').textContent = 'open with ?token=YOUR_TOKEN';
+    connect();
+  </script>
 </body>
 
 </html>

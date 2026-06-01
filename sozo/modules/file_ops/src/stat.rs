@@ -2,9 +2,10 @@ use crate::{FileOpsErrors, MAX_PATH_LEN};
 use rustix::fs::{AtFlags, CWD, Stat, statat};
 use std::{
     collections::HashMap,
-    fs::{self, File},
+    fs::{self},
 };
 
+#[allow(dead_code)]
 struct StatContents {
     dev: u64,
     inode: u64,
@@ -122,14 +123,15 @@ fn pack_stat(
         .cloned()
         .unwrap_or_else(|| metadata.st_gid.to_string());
 
-    let total_size = size_of::<StatContents>() + user.len() + group.len() + (size_of::<u8>() * 2);
+    let total_size: usize =
+        size_of::<StatContents>() + user.len() + group.len() + (size_of::<u8>() * 2);
 
     let mut buffer = Vec::new();
     if buffer.try_reserve(total_size).is_err() {
         return Err(FileOpsErrors::Critical);
     }
 
-    buffer.extend_from_slice(&total_size.to_be_bytes());
+    buffer.extend_from_slice(&(total_size as u32).to_be_bytes());
     buffer.extend_from_slice(&metadata.st_dev.to_be_bytes());
     buffer.extend_from_slice(&metadata.st_ino.to_be_bytes());
     buffer.extend_from_slice(&metadata.st_nlink.to_be_bytes());

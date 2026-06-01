@@ -288,7 +288,6 @@ pub unsafe extern "C" fn module_entry() -> *const ModuleVTable {
 * todo
 
 * update errors to use new map -- need to finish impl
-* stat
 * add unload operation
 
 */

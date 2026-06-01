@@ -31,6 +31,7 @@ FILEOPS_OP_CAT = 0x00
 FILEOPS_OP_COPY = 0x01
 FILEOPS_OP_REMOVE = 0x02
 FILEOPS_OP_MOVE = 0x03
+FILEOPS_OP_STAT = 0x04
 
 # ---------------------------------------------------------------------------
 # Error code tables
@@ -53,10 +54,14 @@ FILEOPS_ERRORS = {
     3: "InvalidArguments",
     4: "PathNotFound",
     5: "ReadError",
-    6: "NotRegularFile",
-    7: "UnableToOpenFile",
-    8: "UnableToEnumerate",
-    9: "Unknown",
+    6: "WriteError",
+    7: "NotRegularFile",
+    8: "UnableToOpenFile",
+    9: "UnableToEnumerate",
+    10: "UnableToRemove",
+    11: "UnableToApplyMetadata",
+    12: "FsyncError",
+    13: "Unknown",
 }
 
 LOAD_ERRORS = {
@@ -92,6 +97,7 @@ LOADABLE_MODULES: dict[str, str] = {
     "copy": "file_ops",
     "remove": "file_ops",
     "move": "file_ops",
+    "stat": "file_ops",
 }
 
 # ---------------------------------------------------------------------------
@@ -175,11 +181,16 @@ def register_loaded_module(
             identity,
             lambda args: _fileops_two_path_payload(FILEOPS_OP_MOVE, args),
         )
+        command_map["stat"] = (
+            identity,
+            lambda args: _fileops_payload(FILEOPS_OP_STAT, args),
+        )
         decoders[identity] = {
             FILEOPS_OP_CAT: _decode_cat,
             FILEOPS_OP_COPY: _decode_fileops_status,
             FILEOPS_OP_REMOVE: _decode_fileops_status,
             FILEOPS_OP_MOVE: _decode_fileops_status,
+            FILEOPS_OP_STAT: _decode_stat,
         }
 
 
@@ -561,6 +572,99 @@ def _decode_cat(data: bytes) -> dict:
         binary = True
 
     return {"cmd": "cat", "content": content, "binary": binary, "size": file_size}
+
+
+def _decode_stat(data: bytes) -> dict:
+    """
+    Stat response wire format:
+      u32  total_size      (includes itself)
+      u64  dev
+      u64  inode
+      u64  nlinks
+      u32  mode
+      u32  uid
+      u32  gid
+      u8   user_len  + [user bytes]
+      u8   group_len + [group bytes]
+      u64  size
+      u64  io_block
+      u64  blocks
+      u64  access
+      u64  access_nsec
+      u64  modify
+      u64  modify_nsec
+      u64  change
+      u64  change_nsec
+    """
+    if len(data) < 4:
+        return {"cmd": "stat", "error": "truncated data"}
+
+    # Fixed header: u32 total + u64*3 + u32*3 = 4 + 24 + 12 = 40 bytes
+    STAT_FIXED = 4 + 8 + 8 + 8 + 4 + 4 + 4  # = 40
+    if len(data) < STAT_FIXED:
+        return {"cmd": "stat", "error": f"truncated fixed header ({len(data)}B)"}
+
+    offset = 4  # skip total_size
+    dev, inode, nlinks = struct.unpack_from(">QQQ", data, offset)
+    offset += 24
+    mode, uid, gid = struct.unpack_from(">III", data, offset)
+    offset += 12
+
+    # Variable: user string
+    if offset >= len(data):
+        return {"cmd": "stat", "error": "truncated at user_len"}
+    user_len = data[offset]
+    offset += 1
+    if offset + user_len > len(data):
+        return {"cmd": "stat", "error": "truncated at user"}
+    user = data[offset : offset + user_len].decode("utf-8", errors="replace")
+    offset += user_len
+
+    # Variable: group string
+    if offset >= len(data):
+        return {"cmd": "stat", "error": "truncated at group_len"}
+    group_len = data[offset]
+    offset += 1
+    if offset + group_len > len(data):
+        return {"cmd": "stat", "error": "truncated at group"}
+    group = data[offset : offset + group_len].decode("utf-8", errors="replace")
+    offset += group_len
+
+    # Remaining fixed fields: u64 * 9
+    if offset + 72 > len(data):
+        return {"cmd": "stat", "error": "truncated at time fields"}
+    (
+        size,
+        io_block,
+        blocks,
+        access,
+        access_nsec,
+        modify,
+        modify_nsec,
+        change,
+        change_nsec,
+    ) = struct.unpack_from(">QQQQQQQQQ", data, offset)
+
+    return {
+        "cmd": "stat",
+        "dev": dev,
+        "inode": inode,
+        "nlinks": nlinks,
+        "mode": mode,
+        "uid": uid,
+        "gid": gid,
+        "user": user,
+        "group": group,
+        "size": size,
+        "io_block": io_block,
+        "blocks": blocks,
+        "access": access,
+        "access_nsec": access_nsec,
+        "modify": modify,
+        "modify_nsec": modify_nsec,
+        "change": change,
+        "change_nsec": change_nsec,
+    }
 
 
 def _decode_fileops_status(data: bytes) -> dict:
