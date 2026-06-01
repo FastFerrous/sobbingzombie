@@ -120,9 +120,9 @@ fn pack_stat(
     let group: String = groups
         .get(&metadata.st_gid)
         .cloned()
-        .unwrap_or_else(|| metadata.st_uid.to_string());
+        .unwrap_or_else(|| metadata.st_gid.to_string());
 
-    let total_size = size_of::<StatContents>() + user.len() + group.len();
+    let total_size = size_of::<StatContents>() + user.len() + group.len() + (size_of::<u8>() * 2);
 
     let mut buffer = Vec::new();
     if buffer.try_reserve(total_size).is_err() {
